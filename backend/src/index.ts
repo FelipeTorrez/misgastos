@@ -1,11 +1,27 @@
 import Fastify from "fastify";
-const app = Fastify({ logger: true });
+import cors from "@fastify/cors";
+import { categoryRoutes } from "./modules/categories/routes.js";
+import { accountRoutes } from "./modules/accounts/routes.js";
+import { transactionRoutes } from "./modules/transactions/routes.js";
+import { budgetRoutes } from "./modules/budgets/routes.js";
+import { balanceRoutes } from "./modules/balance/routes.js";
 
-app.get("/health", async () => ({ status: "ok", version: "0.1.0" }));
-app.get("/v1/balance", async (req) => {
-  // TODO Phase 1: query Supabase with RLS
-  return { income: 0, expense: 0, balance: 0 };
-});
+const app = Fastify({ logger: true });
+await app.register(cors, { origin: true });
+
+app.get("/health", async () => ({ status: "ok", version: "0.1.0-phase1", phase: "Core Finance" }));
+
+await app.register(categoryRoutes);
+await app.register(accountRoutes);
+await app.register(transactionRoutes);
+await app.register(budgetRoutes);
+await app.register(balanceRoutes);
+
+// 404
+app.setNotFoundHandler((req, reply) => reply.status(404).send({ error: "not found" }));
 
 const port = Number(process.env.PORT || 3000);
-app.listen({ port, host: "0.0.0.0" }).then(() => console.log(`Backend on ${port}`));
+if (process.env.NODE_ENV !== "test") {
+  app.listen({ port, host: "0.0.0.0" }).then(() => console.log(`MisGastos backend Phase 1 on ${port}`));
+}
+export default app;

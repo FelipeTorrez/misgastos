@@ -2,8 +2,6 @@
 
 **Pregunta §40.5:** Finanzas independientes o espacio compartido?
 
-**Decisión propuesta:** MVP: 100% independiente (user_id aislado, RLS). Schema preparado para Household (ver data-model.md) con `household_id` nullable en Account/Transaction, pero no implementado. Fase 10: Household con roles owner/member e Invitation.
+**Decisión CONFIRMADA 2026-08-24:** MVP 100% aislado, sin datos compartidos entre los 2 usuarios (confirmado). RLS estricto. Household queda nullable para Phase 10.
 
-**Justificación:** Evita complejidad permisos en MVP. Validar flujo personal antes de familiar.
-
-**Acción:** Confirmar que 2 usuarios iniciales no comparten datos (propuesta: no).
+**Estado:** ✅ Cerrado

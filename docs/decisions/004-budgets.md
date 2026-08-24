@@ -2,10 +2,8 @@
 
 **Pregunta §40.4:** ¿Presupuesto basado solo en gastos o incluye ingresos?
 
-**Decisión propuesta:** Solo gastos por categoría/mes.
+**Decisión CONFIRMADA 2026-08-24:** **Solo gastos** + **presupuesto global además del por categoría** (usuario solicitó ambos).
 
-`Budget { category_id, amount, period: monthly, month }`. `spent = SUM(transactions where type=expense AND category_id=... AND date_trunc(month))`. Ingresos van a balance pero no a presupuesto. Meta ahorro futura será entidad separada.
+`Budget { category_id (nullable), amount, period: monthly, month }`. Si `category_id==null` => presupuesto global. `spent = SUM(expense del mes)`; para categoría filtra por category_id. Ingresos no entran en presupuesto, solo en balance.
 
-**Justificación:** Estándar app finanzas (YNAB, etc). Incluir ingresos complica MVP.
-
-**Acción:** ¿Quieres presupuesto global además de por categoría?
+**Estado:** ✅ Cerrado

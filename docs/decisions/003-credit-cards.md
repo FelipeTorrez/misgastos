@@ -1,11 +1,9 @@
-# ADR 003 — Tarjeta de crédito
+# ADR 003 — Tarjeta de crédito / Cuotas
 
-**Pregunta §40.3:** Compra con TC vs pago TC.
+**Pregunta §40.3 y §10:** Compra con TC vs pago TC. ¿Cuotas en MVP?
 
-**Decisión propuesta:** Modelo 2 pasos:
-1. Compra: Transaction expense `payment_method=credit_card`, `account_id=TC`, amount $100k, date compra. Afecta balance de TC (deuda), no de cuenta corriente.
-2. Pago tarjeta: Transaction type=transfer `from=checking` `to=TC` por monto pagado. Reduce deuda TC, reduce balance checking.
+**Decisión CONFIRMADA 2026-08-24:** **Solo categoría `crédito/cuota`** en MVP, sin módulo cuotas. Campos `installment_*` quedan en schema preparados pero no usados.
 
-No doble conteo. Cuotas: misma compra pero con `installment_number/total` y `original_amount`. Cada cuota es una Transaction separada vinculada por `original_transaction_id` (futuro).
+Modelo 2 pasos: 1) Compra expense `payment_method=credit_card` contra cuenta TC, 2) Pago TC = transfer `checking->TC`. Sin doble conteo.
 
-**Acción:** Confirmar si en MVP necesitas cuotas o solo categoría "Cuota" (§10).
+**Estado:** ✅ Cerrado — cuotas para versión futura.

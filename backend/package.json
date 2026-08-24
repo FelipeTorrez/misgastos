@@ -1,6 +1,6 @@
 {
   "name": "misgastos-backend",
-  "version": "0.1.0",
+  "version": "0.1.0-phase1",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "fastify": "^4.26.0",
+    "@fastify/cors": "^9.0.1",
     "@supabase/supabase-js": "^2.43.0",
     "zod": "^3.23.0",
     "groq-sdk": "^0.7.0"
