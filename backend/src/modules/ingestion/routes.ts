@@ -72,23 +72,62 @@ export async function ingestionRoutes(app: FastifyInstance) {
       mockRaw
     );
 
-    // 3. Crear Transaction candidate si parser tiene amount — con fallback
+    // 3. AI Classification Phase 4 — solo si hay monto y no es 100% determinístico
+    // Parser ya dio amount/merchant/date; AI refina categoría, merchant normalizado, recurring, etc. §16-17
+    let ai: any = null;
+    let finalMerchant = p.merchant ?? (p.operation === "transfer" ? "Transferencia" : "Desconocido");
+    let finalCategory: string | null = null;
+    let aiConfidence = p.confidence;
+    let aiNeedsReview = p.confidence < 0.6;
+    try {
+      const { createAIProvider } = await import("../../ai/providers/AIProvider.js");
+      const provider = createAIProvider(process.env.GROQ_API_KEY ? "groq" : "mock");
+      // Categorías válidas (slugs)
+      const { data: cats } = await trySupabase(supabase.from("categories").select("slug").limit(20) as any, [{ slug: "supermercado" }, { slug: "transporte" }, { slug: "suscripciones" }, { slug: "restaurantes" }, { slug: "servicios" }, { slug: "otros" }]);
+      const categories = (cats as any[])?.map((c: any) => c.slug) ?? ["otros"];
+      // Reglas usuario
+      const { data: rules } = await trySupabase(supabase.from("rules").select("merchant_normalized, preferred_category_id").eq("user_id", userId).limit(20) as any, []);
+      const userRules = ((rules as any[]) ?? []).map((r: any) => ({ merchant: r.merchant_normalized, preferred_category: String(r.preferred_category_id) }));
+      if (p.amount) {
+        ai = await provider.classify({
+          normalized_text: normalized,
+          parser_hints: { amount: p.amount, date: p.date ?? undefined, merchant_guess: p.merchant ?? undefined },
+          categories,
+          user_rules: userRules,
+          locale: "es-CL",
+        });
+        // Validar y aplicar: categoría y merchant de AI tienen prioridad si confidence alta, pero reglas mandan
+        if (ai && ai.merchant) finalMerchant = ai.merchant;
+        if (ai && ai.category) finalCategory = ai.category;
+        aiConfidence = ai?.confidence ?? p.confidence;
+        aiNeedsReview = ai?.needs_review ?? (p.confidence < 0.6);
+      }
+    } catch { /* AI opcional, no bloquea */ }
+
+    // 4. Crear Transaction candidate
     let transaction: any = null;
     if (p.amount) {
-      const type = p.operation === "transfer" ? "transfer" : "expense";
-      const merchant = p.merchant ?? (p.operation === "transfer" ? "Transferencia" : "Desconocido");
-      const status = p.confidence < 0.6 ? "pending_review" : "pending_ai";
+      const type = (ai?.transaction_type as any) ?? (p.operation === "transfer" ? "transfer" : "expense");
+      const status = aiNeedsReview ? "pending_review" : "pending_ai";
+      // Resolver category_id si AI dio categoría
+      let categoryId: string | null = null;
+      if (finalCategory) {
+        const { data: cat } = await trySupabase(supabase.from("categories").select("id").eq("slug", finalCategory).limit(1) as any, null);
+        categoryId = (cat as any)?.id ?? (cat as any)?.[0]?.id ?? null;
+      }
       const payload: any = {
         user_id: userId,
         raw_event_id: (raw as any).id,
-        merchant,
-        amount: p.amount,
-        currency: p.currency ?? "CLP",
+        merchant: finalMerchant,
+        amount: ai?.amount ?? p.amount,
+        currency: ai?.currency ?? p.currency ?? "CLP",
         type,
-        payment_method: p.last4 ? "credit_card" : "unknown",
-        date: p.date ? `${p.date}T${p.time ?? "12:00"}:00Z` : new Date().toISOString(),
+        category_id: categoryId,
+        payment_method: ai?.payment_method ?? (p.last4 ? "credit_card" : "unknown"),
+        date: ai?.date ? `${ai.date}T${p.time ?? "12:00"}:00Z` : p.date ? `${p.date}T${p.time ?? "12:00"}:00Z` : new Date().toISOString(),
         status,
-        confidence: p.confidence,
+        confidence: aiConfidence,
+        is_recurring_candidate: ai?.is_recurring_candidate ?? false,
       };
       const mockTx = { id: `mock-tx-${crypto.randomUUID()}`, ...payload, mocked: true };
       const { data: tx } = await trySupabase(
@@ -102,11 +141,12 @@ export async function ingestionRoutes(app: FastifyInstance) {
     return reply.status(201).send({
       raw_event: raw,
       parsed: p,
+      ai,
       normalized,
       transaction,
       mocked: isMocked,
-      next: transaction ? `transaction ${isMocked ? "(mock, sin DB)" : "created"} (${(transaction as any)?.status ?? "pending"})` : "no amount found → needs manual review",
-      warning: isMocked ? "Supabase no disponible — usando modo demo (parser funciona, datos no persisten). Configura SUPABASE_URL para persistir." : undefined
+      next: transaction ? `transaction ${isMocked ? "(mock, sin DB)" : "created"} (${(transaction as any)?.status ?? "pending"}) — AI: ${ai ? `${ai.category} ${Math.round((ai.confidence ?? 0)*100)}%` : "no AI"}` : "no amount found → needs manual review",
+      warning: isMocked ? "Supabase no disponible — usando modo demo (parser+AI funcionan, datos no persisten). Configura SUPABASE_URL para persistir." : undefined
     });
   });
 

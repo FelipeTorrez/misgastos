@@ -32,31 +32,17 @@ export interface AIProvider {
   classify(input: AgentInput): Promise<AgentOutput>;
 }
 
-// Factory
+// Factory — desacoplado §32
+import { GroqProvider } from "./GroqProvider.js";
 export function createAIProvider(name: string): AIProvider {
-  if (name === "groq") return new GroqProvider();
+  if (name === "groq") return new GroqProvider() as unknown as AIProvider;
+  if (name === "mock") return new MockProvider();
   throw new Error(`Unknown provider ${name}`);
 }
 
-class GroqProvider implements AIProvider {
+class MockProvider implements AIProvider {
   async classify(input: AgentInput): Promise<AgentOutput> {
-    // TODO Phase 4: call Groq with structured outputs + JSON Schema
-    // Fallback mock for Phase 1-2
-    return {
-      transaction_type: "expense",
-      amount: input.parser_hints.amount ?? 0,
-      currency: "CLP",
-      merchant: input.parser_hints.merchant_guess ?? "Desconocido",
-      category: "otros",
-      date: input.parser_hints.date ?? new Date().toISOString().slice(0,10),
-      account_hint: null,
-      payment_method: "unknown",
-      installment: null,
-      is_recurring_candidate: false,
-      is_transfer_candidate: false,
-      confidence: 0.5,
-      needs_review: true,
-      reason: "mock_provider"
-    };
+    const groq = new GroqProvider() as any;
+    return groq.mock(input, "mock_provider");
   }
 }

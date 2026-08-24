@@ -85,11 +85,19 @@ export function IngestionTest() {
             <Text style={s.monoSmall}>{res.normalized}</Text>
           </View>
 
+          {res.ai && (
+            <View style={[s.card, { borderWidth: 1, borderColor: "#3b82f6" }]}>
+              <Text style={s.h2}>AI Agent #1 (Groq) — {res.ai.reason?.includes("mock") ? "mock" : "Groq"} · {res.ai.category} {Math.round(res.ai.confidence*100)}% · {res.ai.needs_review ? "pending_review" : "pending_ai"}</Text>
+              <Text style={s.mono}>{JSON.stringify(res.ai, null, 2)}</Text>
+              {res.ai.needs_review && <Text style={s.muted}>AI no confiado → quedará en bandeja Revisar.</Text>}
+            </View>
+          )}
+
           {res.transaction && (
             <View style={s.card}>
-              <Text style={s.h2}>Transaction</Text>
+              <Text style={s.h2}>Transaction {res.mocked ? "(mock)" : ""} — {res.transaction.status}</Text>
               <Text style={s.mono}>{JSON.stringify(res.transaction, null, 2)}</Text>
-              <Text style={s.muted}>Ve a Movimientos para verla (filtra demo vs real con x-user-id).</Text>
+              <Text style={s.muted}>Ve a Movimientos para verla. {res.warning ?? ""}</Text>
             </View>
           )}
 
