@@ -3,12 +3,14 @@ import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView } from "react-na
 import { Dashboard } from "./src/screens/Dashboard";
 import { Movimientos } from "./src/screens/Movimientos";
 import { Presupuesto } from "./src/screens/Presupuesto";
+import { IngestionTest } from "./src/screens/IngestionTest";
 
 const tabs = [
   { key: "inicio", label: "Inicio", comp: Dashboard },
   { key: "mov", label: "Movimientos", comp: Movimientos },
   { key: "pres", label: "Presupuesto", comp: Presupuesto },
-  { key: "cfg", label: "Config", comp: () => <View style={s.center}><Text style={s.muted}>Fase 1 — Config y auth Supabase pendiente Phase 2</Text></View> }
+  { key: "ingest", label: "Probar Email", comp: IngestionTest },
+  { key: "cfg", label: "Config", comp: () => <View style={s.center}><Text style={s.muted}>Fase 3 — Ingestión Gmail (reenvío) → Fase 4 AI Agent</Text></View> }
 ] as const;
 
 export default function App() {
