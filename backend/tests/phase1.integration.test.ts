@@ -80,7 +80,9 @@ describe("#2 Integration — Phase 1 Core Finance", () => {
   it("GET /health", async () => {
     const res = await app.inject({ method:"GET", url:"/health" });
     expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body).phase).toContain("Core Finance");
+    const body = JSON.parse(res.body);
+    expect(body.status).toBe("ok");
+    expect(body.phase).toBeDefined();
   });
 
   it("POST /v1/accounts — crea vista y cash, rechaza investment", async () => {

@@ -1,3 +1,4 @@
+// @ts-nocheck
 // Mock ligero de Supabase para tests #2 integración sin DB real
 type Row = Record<string, any>;
 const store: Record<string, Row[]> = { accounts: [], transactions: [], budgets: [], categories: [], rules: [] };

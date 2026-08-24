@@ -1,37 +1,26 @@
 # MisGastos — Financial Intelligence App
 
-**Stack:** Expo React Native (TS) + Supabase (Postgres + RLS) + Fastify Node + Groq
+**Stack:** Expo SDK 53 (web por defecto) + Supabase (Postgres RLS) + Fastify + Groq
 
-Ver `spec/` para Spec-Driven Development. Manifiesto original v0.1 analizado y convertido en 10 specs.
+## Quickstart localhost (web por defecto)
+```bash
+# Backend
+cd backend
+# .env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, PORT=3000
+powershell -ExecutionPolicy Bypass -Command "npm run dev" # http://localhost:3000/health
+
+# Mobile Web (defecto localhost:8084)
+cd mobile
+powershell -ExecutionPolicy Bypass -Command "npm run web"
+# abre http://localhost:8084 — demo Phase 2 sin backend necesario
+# alternativa nativa: npm run start:native  (Expo Go, --tunnel si WiFi distinto)
+```
 
 ## Estructura
 ```
-/spec          -> product, requirements, architecture, data-model, ai-agent-*, integrations, security, ux, testing, roadmap
-/docs/decisions -> ADR 001-007 (§40)
-/supabase/migrations -> 001_initial.sql (RLS + seed categorías)
-/backend       -> Fastify + AIProvider (Groq)
-/mobile        -> Expo RN
-/tests         -> fixtures
-```
-
-## Quickstart (Phase 1)
-```bash
-# Supabase local
-supabase start
-psql -f supabase/migrations/001_initial.sql
-
-# Backend
-cd backend && npm install && npm run dev
-
-# Mobile
-cd mobile && npm install && npm start
+/spec, /docs/decisions, /supabase/migrations, /backend, /mobile, /tests
 ```
 
 ## Roadmap
-Phase 0 Spec ✅ hecho. Siguiente: Phase 1 Core Finance (ver spec/roadmap.md)
-
-## Decisiones pendientes §40
-Ver `docs/decisions/001-007`. Cada ADR tiene propuesta concreta para confirmar con el usuario antes de codificar.
-
-## Circuito crítico §37
-`INPUT "Compra $32.990 Lider" -> RawEvent -> Parser -> AI -> Transaction -> UI` — primer test E2E a implementar.
+- Phase 0 Spec ✅  Phase 1 Core Finance ✅  Phase 2 Fake Data 100 ✅
+- Phase 3 Email Ingestion (en curso) → Phase 4 AI Agent #1
