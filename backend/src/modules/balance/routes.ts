@@ -25,7 +25,7 @@ export async function balanceRoutes(app: FastifyInstance) {
       const weeks: Record<string, {income:number, expense:number}> = {};
       for (const t of data) {
         const d = new Date(t.date);
-        const w = `S${Math.ceil(d.getDate()/7)}`;
+        const w = `S${Math.ceil(d.getUTCDate()/7)}`;
         if (!weeks[w]) weeks[w] = { income:0, expense:0 };
         if (t.type==="income") weeks[w].income += t.amount;
         else if (t.type==="expense") weeks[w].expense += t.amount;
