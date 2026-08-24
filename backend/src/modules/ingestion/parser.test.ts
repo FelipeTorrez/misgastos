@@ -3,6 +3,11 @@ import { parseEmail, normalizeForAI, __test__ } from "./parser.js";
 
 describe("Phase 3 — Parser §14", () => {
   it("monto $32.990", () => expect(__test__.extractAmount("Compra por $32.990 en Lider")).toBe(32990));
+  it("monto $45.000 con punto", () => expect(__test__.extractAmount("Compra por $45.000 en Test")).toBe(45000));
+  it("monto $45000 sin punto (bug reportado)", () => expect(__test__.extractAmount("Compra por $45000 en Test")).toBe(45000));
+  it("monto $45000 sin $ con Monto:", () => expect(__test__.extractAmount("Monto: $45000")).toBe(45000));
+  it("monto $600.000", () => expect(__test__.extractAmount("$600.000")).toBe(600000));
+  it("monto $1.000.000", () => expect(__test__.extractAmount("$1.000.000")).toBe(1000000));
   it("monto $250.000", () => expect(__test__.extractAmount("Monto: $250.000")).toBe(250000));
   it("monto con espacio $ 7.490", () => expect(__test__.extractAmount("$ 7.490")).toBe(7490));
   it("fecha 24/08/2026 -> 2026-08-24", () => expect(__test__.extractDate("24/08/2026 15:30")).toBe("2026-08-24"));

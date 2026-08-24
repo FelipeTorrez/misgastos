@@ -17,9 +17,11 @@ export type Parsed = {
 
 const BANKS = ["BancoEstado", "BCI", "Santander", "Itaú", "Scotiabank", "Banco de Chile", "Falabella", "Ripley", "Tenpo", "Mach"];
 
-// $32.990, $ 250.000, $600.000, USD 12.50 (no CLP), monto: 32.990
+// $32.990, $45.000, $45000, $ 250.000, $600.000, $1.000.000 — CLP sin decimales
 function extractAmount(text: string): number | null {
-  const m = text.match(/(?:\$|monto:?|importe:?)\s*([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?|[0-9]+)/i);
+  // Prioridad: con puntos (requiere al menos un punto) -> sin puntos (plain). Evita que $45000 se capture como 450
+  const m = text.match(/(?:\$|monto:?|importe:?)\s*([0-9]{1,3}(?:\.[0-9]{3})+(?:,[0-9]{2})?|[0-9]{4,7}(?:,[0-9]{2})?)/i)
+    ?? text.match(/(?:\$|monto:?|importe:?)\s*([0-9]+)/i);
   if (!m) return null;
   const raw = m[1].replace(/\./g, "").replace(/,[0-9]{2}$/, "");
   const n = parseInt(raw, 10);
