@@ -20,15 +20,23 @@ export function IngestionTest() {
   const send = async () => {
     setLoading(true); setErr(null); setRes(null);
     try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 8000);
       const r = await fetch(`${API_URL}/v1/ingestion/email`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-user-id": "demo" },
-        body: JSON.stringify({ raw_content: raw, sender, subject, external_id: externalId })
+        body: JSON.stringify({ raw_content: raw, sender, subject, external_id: externalId }),
+        signal: ctrl.signal as any,
       });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || JSON.stringify(j));
+      clearTimeout(t);
+      const text = await r.text();
+      let j: any; try { j = JSON.parse(text); } catch { j = { raw: text }; }
+      if (!r.ok) throw new Error(j.error || text.slice(0, 500));
       setRes(j);
-    } catch (e: any) { setErr(e.message); }
+    } catch (e: any) { 
+      if (e.name === "AbortError") setErr("Timeout: backend no respondió en 8s. Verifica que `cd backend; npm run dev` esté corriendo en :3000 y que no esté bloqueado por firewall.");
+      else setErr(e.message?.includes("Failed to fetch") || e.message?.includes("fetch failed") ? `No se pudo conectar a ${API_URL}. Verifica backend en :3000 y que CORS esté habilitado. Detalle: ${e.message}` : e.message); 
+    }
     finally { setLoading(false); }
   };
 
