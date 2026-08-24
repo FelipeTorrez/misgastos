@@ -2,6 +2,7 @@ import { View, Text, ScrollView, StyleSheet, RefreshControl } from "react-native
 import { useEffect, useState, useCallback } from "react";
 import { BalanceCard } from "../components/BalanceCard";
 import { API_URL } from "../lib/supabase";
+import { demoBalance } from "../lib/demoData";
 
 export function Dashboard() {
   const [data, setData] = useState({ income: 0, expense: 0, balance: 0, weekly: [] as any[] });
@@ -9,8 +10,11 @@ export function Dashboard() {
   const load = useCallback(async () => {
     try {
       const r = await fetch(`${API_URL}/v1/balance?month=${new Date().toISOString().slice(0,7)}`);
-      if (r.ok) setData(await r.json());
+      if (r.ok) { setData(await r.json()); return; }
     } catch {}
+    // fallback demo sin backend (Phase 2)
+    const d = demoBalance();
+    setData({ ...d, weekly: [{ week: "S1", balance: d.balance, income: d.income, expense: d.expense }] });
   }, []);
   useEffect(() => { load(); }, [load]);
   return (

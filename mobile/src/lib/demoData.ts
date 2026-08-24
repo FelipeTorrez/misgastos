@@ -1,4 +1,4 @@
-import { dataset100 } from "../../../tests/fixtures/dataset100";
+import { dataset100 } from "./dataset100";
 // Demo mode para validar UX sin backend: calcula balance/budgets localmente (Phase 2)
 export function demoBalance() {
   let income=0, expense=0;

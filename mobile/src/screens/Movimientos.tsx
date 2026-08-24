@@ -2,10 +2,11 @@ import { View, Text, FlatList, StyleSheet, TouchableOpacity } from "react-native
 import { useEffect, useState } from "react";
 import { API_URL } from "../lib/supabase";
 import { fmtCLP, fmtDate } from "../lib/format";
+import { demoTransactions } from "../lib/demoData";
 
 export function Movimientos() {
   const [txs, setTxs] = useState<any[]>([]);
-  useEffect(() => { fetch(`${API_URL}/v1/transactions`).then(r=>r.json()).then(setTxs).catch(()=>{}); }, []);
+  useEffect(() => { fetch(`${API_URL}/v1/transactions`).then(r=>r.json()).then(d=> setTxs(d.length? d : demoTransactions)).catch(()=> setTxs(demoTransactions)); }, []);
   return (
     <View style={s.bg}>
       <Text style={s.title}>Movimientos</Text>
