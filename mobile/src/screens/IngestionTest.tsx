@@ -85,6 +85,14 @@ export function IngestionTest() {
             <Text style={s.monoSmall}>{res.normalized}</Text>
           </View>
 
+          {res.dedup?.is_duplicate && (
+            <View style={[s.card, { borderWidth: 1, borderColor: "#f59e0b", backgroundColor: "#1f1400" }]}>
+              <Text style={s.h2}>⚠️ Duplicado detectado §15</Text>
+              <Text style={s.muted}>Mismo monto/fecha/comercio que {res.dedup.duplicate_of}. No se crea gasto duplicado (status: duplicate).</Text>
+              <Text style={s.monoSmall}>Fuente actual: {res.raw_event?.source} → dedup con transacción {res.dedup.duplicate_of} (email+notificación)</Text>
+            </View>
+          )}
+
           {res.ai && (
             <View style={[s.card, { borderWidth: 1, borderColor: "#3b82f6" }]}>
               <Text style={s.h2}>AI Agent #1 (Groq) — {res.ai.reason?.includes("mock") ? "mock" : "Groq"} · {res.ai.category} {Math.round(res.ai.confidence*100)}% · {res.ai.needs_review ? "pending_review" : "pending_ai"}</Text>
