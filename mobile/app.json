@@ -17,8 +17,10 @@
       "adaptiveIcon": {
         "backgroundColor": "#0b0e14"
       },
-      "package": "com.misgastos.app"
+      "package": "com.misgastos.app",
+      "permissions": ["android.permission.POST_NOTIFICATIONS"]
     },
+    "plugins": ["./plugins/withNotificationListener"],
     "web": {
       "bundler": "metro"
     }
