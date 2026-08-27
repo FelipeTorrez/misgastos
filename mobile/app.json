@@ -1,36 +1,37 @@
-﻿{
-    "expo":  {
-                 "name":  "MisGastos",
-                 "slug":  "misgastos",
-                 "version":  "0.1.0",
-                 "orientation":  "portrait",
-                 "scheme":  "misgastos",
-                 "platforms":  [
-                                   "ios",
-                                   "android",
-                                   "web"
-                               ],
-                 "splash":  {
-                                "backgroundColor":  "#0b0e14",
-                                "resizeMode":  "contain"
-                            },
-                 "ios":  {
-                             "supportsTablet":  true
-                         },
-                 "android":  {
-                                 "adaptiveIcon":  {
-                                                      "backgroundColor":  "#0b0e14"
-                                                  },
-                                 "package":  "com.misgastos.app",
-                                 "permissions":  [
-                                                     "android.permission.POST_NOTIFICATIONS"
-                                                 ]
-                             },
-                 "plugins":  [
-
-                             ],
-                 "web":  {
-                             "bundler":  "metro"
-                         }
-             }
+{
+  "expo": {
+    "name": "MisGastos",
+    "slug": "misgastos",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "misgastos",
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
+    "splash": {
+      "backgroundColor": "#0b0e14",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0b0e14"
+      },
+      "package": "com.misgastos.app",
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS"
+      ],
+      "usesCleartextTraffic": true
+    },
+    "plugins": [
+      "expo-asset"
+    ],
+    "web": {
+      "bundler": "metro"
+    }
+  }
 }

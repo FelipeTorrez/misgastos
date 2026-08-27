@@ -1,6 +1,38 @@
+# Dependencias
 node_modules/
+
+# Builds
 dist/
 .expo/
+web-build/
+build/
+
+# Ambiente / secretos (NUNCA subir)
 .env
+.env.local
+.env.*.local
+!.env.example
+
+# Supabase local
 .supabase/
+
+# Logs
 *.log
+backend-log.txt
+
+# Runtime
+backend/.mockstore.json
+
+# Basura accidental local
+mobile/192.168.1.xx
+mobile/AndroidManifest.backup.xml
+mobile/app.json.bak
+
+# OS
+.DS_Store
+Thumbs.db
+
+# NOTA: mobile/android/ y mobile/ios/ NO se ignoran a propósito —
+# contienen el código nativo custom (NotificationListener.kt, service en
+# AndroidManifest) que se mantiene versionado para que 'expo prebuild --clean'
+# no lo borre en otra máquina.

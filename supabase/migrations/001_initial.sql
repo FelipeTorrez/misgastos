@@ -1,6 +1,6 @@
 -- MisGastos — Initial Schema v0.1
--- Ejecutar con: supabase db push o psql
-enable extension if not exists "pgcrypto";
+-- Ejecutar con: npm run setup-supabase
+create extension if not exists "pgcrypto";
 
 -- Categories (system + user)
 create table categories (

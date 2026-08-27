@@ -30,7 +30,7 @@ function query(table:string){
     then:(resolve:any)=>{ let rows=[...store[table]]; for(const f of filters) rows=rows.filter(f); resolve({data:rows, error:null}); }
   }; return api;
 }
-vi.mock("../src/lib/supabase.js", ()=>({ supabase:{from:(t:string)=>query(t)}, getUserId:(req:any)=> req.headers["x-user-id"] ?? "demo" }));
+vi.mock("../src/lib/supabase.js", ()=>({ supabase:{from:(t:string)=>query(t)}, getUserId:(req:any)=> req.headers["x-user-id"] ?? "demo", isMockMode: false }));
 import app from "../src/index.js";
 
 const ACCOUNT_MAP: Record<string,string> = { checking:"10000000-0000-0000-0000-000000000101", vista:"10000000-0000-0000-0000-000000000102", credit_card:"10000000-0000-0000-0000-000000000103", cash:"10000000-0000-0000-0000-000000000104", digital_wallet:"10000000-0000-0000-0000-000000000105" };

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-const store: Record<string, any[]> = { raw_events: [], transactions: [], categories: [{ id: "cat-otros", slug: "otros" }], accounts: [] };
+const store: Record<string, any[]> = { raw_events: [], transactions: [], categories: [{ id: "cat-otros", slug: "otros" }], accounts: [], rules: [] };
 function reset(){ for(const k of Object.keys(store)) if(k!=="categories") store[k]=[]; }
 function query(table:string){
   let filters:any[]=[]; let inserts:any=null;
@@ -27,7 +27,7 @@ function query(table:string){
   return api;
 }
 
-vi.mock("../src/lib/supabase.js", ()=>({ supabase:{from:(t:string)=>query(t)}, getUserId:()=>"user-test" }));
+vi.mock("../src/lib/supabase.js", ()=>({ supabase:{from:(t:string)=>query(t)}, getUserId:()=>"user-test", isMockMode: false }));
 import app from "../src/index.js";
 
 beforeEach(()=> reset());

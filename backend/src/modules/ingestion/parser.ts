@@ -62,7 +62,7 @@ function extractLast4(text: string): string | null {
 
 function extractMerchant(text: string): string | null {
   // "en Lider", "comercio: Jumbo" — captura 1-2 palabras, corta antes de stopwords
-  const stop = new Set(["con", "tarjeta", "terminada", "en", "de", "la", "el"]);
+  const stop = new Set(["con", "tarjeta", "terminada", "en", "de", "la", "el", "por", "para", "del", "los", "las", "un", "una", "su", "on", "a", "al"]);
   let m = text.match(/\ben\s+([A-Za-zÁÉÍÓÚÑa-záéíóúñ0-9]+(?:\s+[A-Za-z0-9ÁÉÍÓÚÑa-záéíóúñ]+)?)/i);
   if (m) {
     const words = m[1].trim().split(/\s+/).filter(w => !stop.has(w.toLowerCase()));

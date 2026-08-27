@@ -11,7 +11,7 @@ vi.mock("../src/lib/supabase.js", () => {
       then:(cb:any)=> cb({data:[],error:null})
     } as any;
   };
-  return { supabase:{ from:(t:string)=> query(t) }, getUserId:()=>"u1" };
+  return { supabase:{ from:(t:string)=> query(t) }, getUserId:()=>"u1", isMockMode: false };
 });
 
 // Mock simple para este test: usa mock provider directo

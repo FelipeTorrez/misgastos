@@ -13,7 +13,7 @@ const NOTIF_EXAMPLES = [
   { label: "Notificación Uber", raw: "Pagaste $8.900 en Uber - 24/08/2026 19:00", title: "Uber $8.900" },
 ];
 
-export function IngestionTest() {
+export function IngestionTest({ onReload }: { onReload?: () => void } = {}) {
   const [raw, setRaw] = useState(EXAMPLES[0].raw);
   const [sender, setSender] = useState(EXAMPLES[0].sender);
   const [subject, setSubject] = useState(EXAMPLES[0].subject);
@@ -31,7 +31,7 @@ export function IngestionTest() {
       const t = setTimeout(() => ctrl.abort(), 8000);
       const r = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-user-id": "demo" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ raw_content: raw, sender, subject, external_id: externalId }),
         signal: ctrl.signal as any,
       });
@@ -40,6 +40,8 @@ export function IngestionTest() {
       let j: any; try { j = JSON.parse(text); } catch { j = { raw: text }; }
       if (!r.ok && r.status !== 200) throw new Error(j.error || text.slice(0, 500));
       setRes(j);
+      setExternalId(`test-${Date.now()}`);
+      onReload?.();
     } catch (e: any) { 
       if (e.name === "AbortError") setErr("Timeout: backend no respondió en 8s. Verifica que `cd backend; npm run dev` esté corriendo en :3000 y que no esté bloqueado por firewall.");
       else setErr(e.message?.includes("Failed to fetch") || e.message?.includes("fetch failed") ? `No se pudo conectar a ${API_URL}. Verifica backend en :3000 y que CORS esté habilitado. Detalle: ${e.message}` : e.message); 
@@ -89,16 +91,26 @@ export function IngestionTest() {
 
       {mode === "email" && (
         <TouchableOpacity onPress={async () => {
-          // Prueba conjunta demo: email + notificación mismo Lider deben dedupar
-          const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 8000);
-          setLoading(true);
+          setErr(null); setRes(null); setLoading(true);
           try {
-            const r1 = await fetch(`${API_URL}/v1/ingestion/email`, { method: "POST", headers: { "Content-Type": "application/json", "x-user-id": "demo" }, body: JSON.stringify({ raw_content: "Compra por $32.990 en Lider - 24/08/2026 15:30", sender: "santander@cl", subject: "Compra", external_id: `joint-email-${Date.now()}` }), signal: ctrl.signal as any });
+            const headers = { "Content-Type": "application/json" };
+            const ctrl1 = new AbortController(); setTimeout(() => ctrl1.abort(), 15000);
+            const r1 = await fetch(`${API_URL}/v1/ingestion/email`, { method: "POST", headers, body: JSON.stringify({ raw_content: "Compra por $32.990 en Lider - 24/08/2026 15:30", sender: "santander@cl", subject: "Compra", external_id: `joint-email-${Date.now()}` }), signal: ctrl1.signal as any });
+            if (!r1.ok) throw new Error(`Email failed ${r1.status}: ${await r1.text().catch(()=>"")}`);
             const j1 = await r1.json();
-            const r2 = await fetch(`${API_URL}/v1/ingestion/notification`, { method: "POST", headers: { "Content-Type": "application/json", "x-user-id": "demo" }, body: JSON.stringify({ raw_content: "Compra por $32.990 en Lider - 24/08/2026 15:32", sender: "cl.santander", subject: "Notificación", external_id: `joint-notif-${Date.now()+1}` }), signal: ctrl.signal as any });
+
+            const ctrl2 = new AbortController(); setTimeout(() => ctrl2.abort(), 15000);
+            const r2 = await fetch(`${API_URL}/v1/ingestion/notification`, { method: "POST", headers, body: JSON.stringify({ raw_content: "Compra por $32.990 en Lider - 24/08/2026 15:32", sender: "cl.santander", subject: "Notificación", external_id: `joint-notif-${Date.now()}` }), signal: ctrl2.signal as any });
+            if (!r2.ok) throw new Error(`Notif failed ${r2.status}: ${await r2.text().catch(()=>"")}`);
             const j2 = await r2.json();
+
             setRes({ joint: true, email: j1, notification: j2, isDup: j2.dedup?.is_duplicate, aiCat: j1.ai?.category });
-          } catch (e: any) { setErr(e.message); }
+            setExternalId(`test-${Date.now()}`);
+            onReload?.();
+          } catch (e: any) {
+            const msg = e.name === "AbortError" ? `Timeout (15s). Backend en ${API_URL} no respondió.` : e.message?.includes("Failed to fetch") || e.message?.includes("fetch failed") ? `No conecta a ${API_URL}. Verifica que el backend esté corriendo.` : e.message;
+            setErr(msg);
+          }
           setLoading(false);
         }} style={[s.btn, { backgroundColor: "#3b82f6", marginTop: 8 }]}>
           <Text style={s.btnText}>▶ Probar conjunta 4+5 (email + notificación → dedup)</Text>
@@ -127,9 +139,9 @@ export function IngestionTest() {
             </>
           ) : (
             <>
-              <View style={[s.card, res.transaction ? s.cardOk : s.cardWarn]}>
-                <Text style={s.h2}>{res.dedup ? "⚠️ Duplicado ignorado" : res.transaction ? "✅ Transaction creada" : "⚠️ Sin monto — revisión manual"}</Text>
-                {res.dedup && <Text style={s.muted}>Ya existía external_id {externalId}</Text>}
+              <View style={[s.card, res.dedup === true ? s.cardWarn : res.transaction ? s.cardOk : s.cardWarn]}>
+                <Text style={s.h2}>{res.dedup === true ? "⚠️ Duplicado ignorado (external_id)" : res.transaction ? "✅ Transaction creada" : "⚠️ Sin monto — revisión manual"}</Text>
+                {res.dedup === true && <Text style={s.muted}>Ya existía este external_id en la base.</Text>}
               </View>
 
               <View style={s.card}>
@@ -144,6 +156,18 @@ export function IngestionTest() {
                   <Text style={s.h2}>⚠️ Duplicado detectado §15</Text>
                   <Text style={s.muted}>Mismo monto/fecha/comercio que {res.dedup.duplicate_of}. No se crea gasto duplicado (status: duplicate).</Text>
                   <Text style={s.monoSmall}>Fuente actual: {res.raw_event?.source} → dedup con transacción {res.dedup.duplicate_of} (email+notificación)</Text>
+                </View>
+              )}
+
+              {res.classification_source && (
+                <View style={[s.card, res.classification_source === "rule" ? { borderWidth: 2, borderColor: "#10b981", backgroundColor: "#04140c" } : { borderWidth: 1, borderColor: "#3b82f6" }]}>
+                  <Text style={s.h2}>
+                    {res.classification_source === "rule" ? "📏 REGLA aplicada — AI omitido (skip AI)" : res.classification_source === "ai" ? "🤖 Clasificado por AI Agent" : "⚙️ Clasificado por parser"}
+                  </Text>
+                  <Text style={s.muted}>classification_source: "{res.classification_source}"</Text>
+                  {res.matched_rule
+                    ? <Text style={s.monoSmall}>matched_rule: {"\n"}{JSON.stringify(res.matched_rule, null, 2)}</Text>
+                    : res.classification_source === "rule" && <Text style={s.muted}>Regla del parser aplicada sin detalle</Text>}
                 </View>
               )}
 

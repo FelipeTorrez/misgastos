@@ -69,7 +69,8 @@ function query(table: string) {
 
 vi.mock("../src/lib/supabase.js", () => ({
   supabase: { from: (t:string)=>query(t) },
-  getUserId: (req:any)=> req.headers["x-user-id"] ?? "user-aaa"
+  getUserId: (req:any)=> req.headers["x-user-id"] ?? "user-aaa",
+  isMockMode: false
 }));
 
 import app from "../src/index.js";

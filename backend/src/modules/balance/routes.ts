@@ -1,19 +1,33 @@
 import { FastifyInstance } from "fastify";
-import { supabase, getUserId } from "../../lib/supabase.js";
+import { supabase, getUserId, isMockMode } from "../../lib/supabase.js";
+import { mockStore } from "../../lib/mockStore.js";
+import { SYSTEM_CATEGORIES } from "../categories/routes.js";
 
 export async function balanceRoutes(app: FastifyInstance) {
   app.get("/v1/balance", async (req: any) => {
     const userId = getUserId(req);
     const month = req.query?.month; // YYYY-MM
-    let q = supabase.from("transactions").select("amount, type, date").eq("user_id", userId);
-    if (month) {
-      const start = `${month}-01`;
-      const end = new Date(new Date(start).setMonth(new Date(start).getMonth()+1)).toISOString().slice(0,10);
-      q = q.gte("date", start).lt("date", end);
+    let rows: any[];
+    let rawForByCat: any[] = [];
+    if (isMockMode) {
+      let list = mockStore.transactions.filter(t => t.user_id === userId && t.status !== "duplicate" && t.status !== "ignored");
+      if (month) list = list.filter(t => typeof t.date === "string" && t.date.startsWith(month));
+      rows = list.map(t => ({ amount: t.amount, type: t.type, date: t.date }));
+      rawForByCat = list;
+    } else {
+      let q = supabase.from("transactions").select("amount, type, date, status, category_id").eq("user_id", userId);
+      if (month) {
+        const start = `${month}-01`;
+        const end = new Date(new Date(start).setMonth(new Date(start).getMonth()+1)).toISOString().slice(0,10);
+        q = q.gte("date", start).lt("date", end);
+      }
+      const { data } = await q;
+      const filtered = ((data ?? []) as any[]).filter(t => t.status !== "duplicate" && t.status !== "ignored");
+      rows = filtered.map(t => ({ amount: t.amount, type: t.type, date: t.date }));
+      rawForByCat = filtered;
     }
-    const { data } = await q;
     let income = 0, expense = 0;
-    for (const t of data ?? []) {
+    for (const t of rows) {
       if (t.type === "income") income += t.amount;
       else if (t.type === "expense") expense += t.amount;
       // transfer no cuenta para balance global (ADR-002)
@@ -21,9 +35,9 @@ export async function balanceRoutes(app: FastifyInstance) {
     const balance = income - expense;
     // evolución semanal si month
     let weekly: any[] = [];
-    if (month && data) {
+    if (month && rows.length) {
       const weeks: Record<string, {income:number, expense:number}> = {};
-      for (const t of data) {
+      for (const t of rows) {
         const d = new Date(t.date);
         const w = `S${Math.ceil(d.getUTCDate()/7)}`;
         if (!weeks[w]) weeks[w] = { income:0, expense:0 };
@@ -32,6 +46,55 @@ export async function balanceRoutes(app: FastifyInstance) {
       }
       weekly = Object.entries(weeks).map(([week, v]) => ({ week, ...v, balance: v.income - v.expense }));
     }
-    return { income, expense, balance, weekly };
+    // --- by_category: union gastos del mes + presupuestos vigentes ---
+    // spent por categoría (solo expense, requiere category_id)
+    const spentByCat: Record<string, number> = {};
+    for (const t of rawForByCat as any[]) {
+      if (t.type === "expense" && t.category_id) {
+        spentByCat[t.category_id] = (spentByCat[t.category_id] ?? 0) + t.amount;
+      }
+    }
+    // presupuestos del mes y mapa categorías
+    const budgetMonth = month ? `${month}-01` : new Date().toISOString().slice(0,7) + "-01";
+    let budgets: any[] = [];
+    let catMap = new Map<string, { id: string; name: string; slug: string }>(
+      SYSTEM_CATEGORIES.map(c => [c.id, { id: c.id, name: c.name, slug: c.slug }])
+    );
+    if (isMockMode) {
+      budgets = mockStore.listBudgets(userId, budgetMonth);
+    } else {
+      const { data: bs } = await supabase.from("budgets").select("*, categories(name, slug)").eq("user_id", userId).eq("month", budgetMonth);
+      budgets = bs ?? [];
+      const { data: cats } = await supabase.from("categories").select("id, name, slug").or(`user_id.is.null,user_id.eq.${userId}`);
+      if (cats) {
+        for (const c of cats as any[]) catMap.set(c.id, { id: c.id, name: c.name, slug: c.slug });
+      }
+      // también asegurar categorías que vienen joineadas en budgets (por si no están en map)
+      for (const b of budgets as any[]) {
+        if (b.category_id && b.categories && !catMap.has(b.category_id)) {
+          catMap.set(b.category_id, { id: b.category_id, name: b.categories.name, slug: b.categories.slug });
+        }
+      }
+    }
+    const budgetByCat = new Map<string, number>();
+    for (const b of budgets as any[]) if (b.category_id) budgetByCat.set(b.category_id, b.amount);
+    const unionIds = new Set<string>([...Object.keys(spentByCat), ...budgetByCat.keys()]);
+    const by_category = [...unionIds].map(id => {
+      const cat = catMap.get(id);
+      const spent = spentByCat[id] ?? 0;
+      const budget = budgetByCat.get(id) ?? null;
+      const pct = expense ? Math.round((spent / expense) * 100) : 0;
+      const budget_pct = budget ? Math.round((spent / budget) * 100) : null;
+      return {
+        category_id: id,
+        slug: cat?.slug ?? "otros",
+        name: cat?.name ?? id,
+        spent,
+        budget,
+        pct,
+        budget_pct,
+      };
+    }).sort((a, b) => b.spent - a.spent);
+    return { income, expense, balance, weekly, by_category };
   });
 }

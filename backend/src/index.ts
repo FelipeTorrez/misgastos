@@ -1,3 +1,4 @@
+import "dotenv/config";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { categoryRoutes } from "./modules/categories/routes.js";
@@ -6,11 +7,12 @@ import { transactionRoutes } from "./modules/transactions/routes.js";
 import { budgetRoutes } from "./modules/budgets/routes.js";
 import { balanceRoutes } from "./modules/balance/routes.js";
 import { ingestionRoutes } from "./modules/ingestion/routes.js";
+import { ruleRoutes } from "./modules/rules/routes.js";
 
 const app = Fastify({ logger: true });
 await app.register(cors, { origin: true });
 
-app.get("/health", async () => ({ status: "ok", version: "0.2.0-phase3", phase: "Email Ingestion + Parser" }));
+app.get("/health", async () => ({ status: "ok", version: "0.3.0-phase8", phase: "Personal Rules" }));
 
 await app.register(categoryRoutes);
 await app.register(accountRoutes);
@@ -18,6 +20,7 @@ await app.register(transactionRoutes);
 await app.register(budgetRoutes);
 await app.register(balanceRoutes);
 await app.register(ingestionRoutes);
+await app.register(ruleRoutes);
 
 // 404
 app.setNotFoundHandler((req, reply) => reply.status(404).send({ error: "not found" }));

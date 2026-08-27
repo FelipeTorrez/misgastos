@@ -5,6 +5,14 @@ let txStore: any[] = [];
 
 function reset(){ txStore=[]; store.transactions=[]; }
 
+function genericChain(rowsProvider: () => any[]) {
+  const api: any = {};
+  for (const m of ["select", "eq", "is", "gte", "lt", "or", "order", "limit"]) api[m] = () => api;
+  api.single = async () => ({ data: null, error: null });
+  api.then = (cb: any) => cb({ data: rowsProvider(), error: null });
+  return api;
+}
+
 function query(table:string){
   if(table==="transactions"){
     return {
@@ -26,18 +34,15 @@ function query(table:string){
       then: (cb:any)=> cb({data: txStore, error:null})
     } as any;
   }
+  const rowsProvider = () => table === "categories" ? store.categories : [];
   return {
-    select: () => ({
-      eq: () => ({ eq: () => ({ eq: () => ({ single: async()=>({data:null}) }) }), single: async()=>({data:null}) }),
-      limit: async()=>({data: store.categories, error:null}),
-      then: (cb:any)=> cb({data: store.categories, error:null})
-    }),
+    select: () => genericChain(rowsProvider),
     insert: (row:any)=> ({ select:()=>({ single: async()=>({data:{id:"mock-raw",...row},error:null}) }) }),
     then: (cb:any)=> cb({data:[],error:null})
   } as any;
 }
 
-vi.mock("../src/lib/supabase.js", ()=>({ supabase:{ from:(t:string)=> query(t) }, getUserId:()=>"u1" }));
+vi.mock("../src/lib/supabase.js", ()=>({ supabase:{ from:(t:string)=> query(t) }, getUserId:()=>"u1", isMockMode: false }));
 import app from "../src/index.js";
 
 beforeEach(()=> reset());

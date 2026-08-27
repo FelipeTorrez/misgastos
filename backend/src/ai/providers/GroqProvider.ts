@@ -16,7 +16,7 @@ export class GroqProvider {
 
     const system = `Eres Transaction Intelligence (Agente #1). Convierte texto financiero chileno no estructurado en JSON ESTRICTO según schema.
 - Usa parser_hints si son confiables, pero corrige si el texto contradice.
-- merchant: nombre corto normalizado (ej "Lider", "Spotify").
+- merchant: UNA sola marca en Title Case (ej "Jumbo", "Lider", "Spotify"). Solo el nombre del comercio, sin preposiciones ("en","on","de","por"), sin sufijos ni palabras extra. Máx 2 palabras, primera letra de cada palabra en mayúscula.
 - category: elige SOLO de [${categories}] (usa "otros" si dudas).
 - amount: CLP entero sin puntos, debe coincidir con texto o hints.
 - Si amount es null o no hay monto claro, pon confidence 0.4 y needs_review true.
@@ -77,12 +77,22 @@ export class GroqProvider {
       if (m.includes(r.merchant.toLowerCase())) { category = r.preferred_category; break; }
     }
 
-    const needs_review = amount === 0 || !input.parser_hints.merchant_guess;
+    // Extraer merchant del texto si el parser no lo encontró
+    let merchant = input.parser_hints.merchant_guess;
+    if (!merchant) {
+      const KNOWN = ["Santa Isabel", "Pedidos Ya", "BancoEstado", "Lider", "Jumbo", "Unimarc", "Tottus", "Uber", "Cabify", "Copec", "Shell", "Spotify", "Netflix", "ChatGPT", "YouTube", "Disney", "iCloud", "Rappi", "Starbucks", "Enel", "Movistar", "Entel", "Falabella", "Ripley"];
+      const lowText = input.normalized_text.toLowerCase();
+      for (const km of KNOWN) {
+        if (lowText.includes(km.toLowerCase())) { merchant = km; break; }
+      }
+    }
+
+    const needs_review = amount === 0 || !merchant;
     return {
       transaction_type: /transferencia/.test(m) ? "transfer" : "expense",
       amount: amount || 0,
       currency: "CLP",
-      merchant: input.parser_hints.merchant_guess ?? "Desconocido",
+      merchant: merchant ?? "Desconocido",
       category,
       date: input.parser_hints.date ?? new Date().toISOString().slice(0, 10),
       account_hint: null,
