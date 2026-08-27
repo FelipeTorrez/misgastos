@@ -7,16 +7,19 @@
 
 ---
 
-## 📊 ESTADO ACTUAL (2026-08-26)
+## 📊 ESTADO ACTUAL (2026-08-27 madrugada)
 
 | Fase | Estado | Nota |
 |------|--------|------|
 | U0 Design System | ✅ **100%** | Iconos MCI vía MIcon.tsx verificados on-device |
-| U1 Navegación+Config | ✅ **100%** | 4 tabs iconadas + header + Sheet Más + Config real (ping/health, Limpiar base, devMode) |
-| U2 Inicio | ✅ **100%** | Hero balance + MonthPager + recuento categorías (solo >0, tap filtra) + últimos 5 |
-| U4 Movimientos CRUD | ✅ **Adelantada** | Swipe-borrar sin popup + FAB Gasto/Ingreso + modal POST + confirmación regla didáctica |
-| U5 Presupuestos UI | ✅ **Código** (falta build/install en device) | **+ re-arquitectura a shell persistente** (mes+balance fijos, sub-tabs anidados, FAB global). Barras Metas + pill Configurar + Sheet límites | 
-| U6 Pulido+IA sheet local | ⬜ | quitar sonda probe, robot más grande, IA responde con datos reales, **donut Distribución (v1.1, requiere react-native-svg + prebuild)** |
+| U1 Navegación+Config | ✅ **100%** | 4 tabs iconadas + header + Sheet Más + Config real |
+| U2 Inicio | ✅ **100%** | Hero + MonthPager + recuento cat. + últimos 5 (luego absorbido en shell) |
+| U3 by_category | ✅ **100%** | Backend `GET /v1/balance` con `by_category`, mobile consume con fallback |
+| U4 Movimientos CRUD | ✅ **100%** | Swipe-borrar + FAB Gasto/Ingreso + confirmación regla |
+| U5 Presupuestos UI | ✅ **100%** | Shell persistente + barras Metas + Configurar + SwipeRow + Copiar mes anterior |
+| U6 Pulido+IA sheet local | ✅ **100%** | Sonda quitada, chip IA agrandado, IASheet 4 prompts locales |
+
+> U6 y U3 cerrados, hosting Railway en Node 22 (`misgastos-production-b8c6.up.railway.app`), notificaciones nativo `POST` + `resendActive` + `setApiUrl` persistido.
 
 ### Re-arquitectura de navegación (decidida 2026-08-26, aplicada en U5)
 El usuario pidió que la pantalla principal (mes + balance general) quede **fija arriba** y que uno pueda sub-navegar entre sub-tabs **sin que se mueva**, con un **FAB global [+]**. Se replicó el layout de KuantoKua:

@@ -1,7 +1,7 @@
 # HANDOFF — Contexto completo para continuar desarrollo
 
-> Última actualización: 2026-08-26 (noche) — **U6 Pulido + IA sheet local completados** ✅ (sonda quitada, chip IA agrandado, IASheet con datos reales, build release instalado).
-> Siguiente: **Phase 9 Financial Advisor (post-MVP) + Hardening** o probar **Notificaciones / Reenvío Email** sin esperar backend completo. Ver §6 y `spec/roadmap.md`.
+> Última actualización: 2026-08-27 (madrugada) — **U3 by_category + Notificaciones nativo + Limpieza código muerto + U6 cerrados** ✅ — notificaciones con reenvío manual funcionando, visual de pruebas corregido. Build release con `EXPO_PUBLIC_API_URL=https://misgastos-production-b8c6.up.railway.app` (fuera de LAN) y `GROQ_MODEL=qwen/qwen3.8-27b`.
+> Siguiente: **Probar compra real mañana (notificación cl.android) + Phase 9 Advisor + Hardening/Hosting fino**. Ver §6 y `spec/roadmap.md`.
 
 > ⚠️ Cambió la arquitectura de navegación: ahora hay un **shell persistente** (mes + balance hero + sub-tabs anidados + FAB global). Detalle abajo en §6.
 
@@ -18,10 +18,10 @@
 | Capa | Tecnología |
 |------|-----------|
 | Mobile | Expo SDK 53, React Native 0.79.6, React 19, TypeScript |
-| Backend | Node.js + Fastify + tsx (watch), Zod para validación |
+| Backend | Node.js + Fastify + tsx (watch) + Node 22 en Railway (prod), Zod para validación |
 | DB | Supabase (Postgres + RLS) — **conectada en cloud (proyecto bqnktrfwoxetbirrodmo), modo real activo** |
-| AI | Groq API (`llama-3.1-70b-versatile`) con fallback a proveedor mock heurístico — **Groq real activo** |
-| Tests | Vitest — **125/125 passing** |
+| AI | Groq API (`qwen/qwen3.8-27b` actual, antes `llama-3.1-70b`) con fallback mock — **Groq real activo** |
+| Tests | Vitest — **125/125 passing** · `mobile: tsc --noEmit` **0 errores** (se corrigieron `Amount.tsx`/`ListRow.tsx`) |
 
 ### Estado de fases
 - ✅ Phase 0: Spec + ADRs 001–007 (`spec/`, `docs/decisions/`)
@@ -132,14 +132,15 @@ Sin `GROQ_API_KEY` → `mock()`:
 | `/health` | GET | `{"status":"ok","version":"0.3.0-phase8","phase":"Personal Rules"}` |
 
 ### Mobile
-- `mobile/App.tsx`: **shell persistente** (ver §6) — header global (logo, chip 🤖IA, cog→Sheet "Más" con Reglas/Config/(dev)Probar/Galería) + MonthPager global + hero "Total Gastos" + chip filtro + barra de sub-tabs (Categorías/Movimientos/Presupuestos) + FAB global [+] (agregar Gasto/Ingreso) + estado global `filterCategory`/`month`/`subTab`/`secondary`
-- `mobile/src/lib/useShellData.ts`: **fuente única de datos** del shell — carga en paralelo `/v1/balance`, `/v1/transactions`, `/v1/budgets` del mes; expone `{balance, txs, budgets, cats, byCat, reload}`. Cambiar mes re-renderiza todas las sub-tabs a la vez.
-- `mobile/src/lib/categories.ts`: `Category` ahora incluye `type` (para filtrar solo categorías de gasto en presupuestos)
-- `mobile/src/theme/tokens.ts` + `categoryIcons.tsx`: tokens (paleta #0C1322/#182238/#223052) + 14 categorías MCI con labels es-CL
-- `mobile/src/components/ui/`: MIcon (glifos via fromCodePoint — USAR SIEMPRE ESTE), **BalanceHero (Total Gastos+ingresos/balance+chip filtro)**, **AddMoveModal (global)**, Card, Progress(slug opcional), CategoryCircle/Tag, Amount, MonthPager, EmptyState, StatusBadge es, ListRow/DayHeader, Sheet, ScreenHeader
-- `mobile/src/screens/`: **Categorias (sub-tab "Distribución por Categoría" + últimos 5)**, **Movimientos (sub-tab, recibe txs/cats/month/filterCategory del shell, sin FAB propio, swipe-borrar, editar categoría+confirmación regla)**, **Presupuesto (sub-tab "Metas y presupuestos" + pill Configurar + Sheet límites por categoría — solo tipo gasto, POST upsert / DELETE)**, Categorias vieja no usada (grid) — reusada como distribuición; Config (ping /health, versión/modo, toggle modo desarrollador); Reglas/IngestionTest/GaleriaUI vía Sheet (>secondary)
-- `mobile/.env.local`: `EXPO_PUBLIC_API_URL=http://192.168.1.88:3000`
-- APK **release** INSTALADA (bundle embebido); debug NO se usa
+- `mobile/App.tsx`: **shell persistente** (ver §6) — header global (logo, chip 🤖IA agrandado, cog→Sheet "Más" con Reglas/Config/(dev)Probar/Galería) + MonthPager global + hero "Total Gastos" + chip filtro + sub-tabs + FAB `FabMenu` Gasto/Ingreso + `filterCategory`/`month`/`subTab`/`secondary` + `AppState` resend cada 30s
+- `mobile/src/lib/useShellData.ts`: **fuente única** — en paralelo `/v1/balance?month` (con `by_category` desde U3), `/v1/transactions?month`, `/v1/budgets?month`; expone `{balance, txs, budgets, cats, byCat, byCategory, reload}`. Si `balance.by_category` viene, `byCat` se deriva de ahí con fallback cliente.
+- `mobile/src/lib/categories.ts`: `Category` con `type`; `mobile/src/lib/supabase.ts` simplificado a solo `API_URL` (cliente Supabase sin uso, se quitó `createClient`)
+- `mobile/src/theme/tokens.ts` + `categoryIcons.tsx`: paleta #0C1322/#182238/#223052 + 14 categorías MCI es-CL
+- `mobile/src/components/ui/`: `MIcon` (siempre), `BalanceHero`, `AddMoveModal`, `IASheet` (4 prompts locales del mes), `SwipeRow` (Pressable opaco, encuadre corregido), Card, Progress (+ `color` para tinte categoría), CategoryCircle/Tag, Amount (fix `color:string`), MonthPager, EmptyState, StatusBadge es, ListRow (fix `s.day`), Sheet, ScreenHeader
+- `mobile/src/screens/`: **Categorias** (distribución con `byCat` + últimos 5, `Progress` con `catIcon.color`), **Movimientos** (sub-tab con `SwipeRow` compartido), **Presupuesto** (metas, `CopyPrev`, `deleteBudget`, `editBudget` al tocar, `SwipeRow` con `Pressable`), `IngestionTest` (+ `onReload`), `Config` (+ `Notificaciones` con `simulate`/`resendActive`/`postTestVisible` + `onReload`), `GaleriaUI` sin sonda; `Dashboard`/`BalanceCard`/`BudgetBar`/`demoData`/`dataset100` (mobile) **eliminados** (código muerto)
+- `mobile/src/native/NotificationListener.ts` + `android/.../NotificationListener*.kt`: `ALLOWLIST` por prefijo (`cl.android`→Falabella), `DEBUG_SELF`, `postTestNotification`, `setApiUrl` persistido en `SharedPreferences`, `startListening` via `NativeEventEmitter`
+- `mobile/.env.local`: `EXPO_PUBLIC_API_URL=https://misgastos-production-b8c6.up.railway.app` (fuera de LAN, Railway Node 22) — `EXPO_PUBLIC_SUPABASE_URL` aún en LAN pero sin uso
+- APK **release** INSTALADA (bundle embebido, contiene URL Railway); debug NO se usa
 
 ---
 
@@ -320,16 +321,31 @@ Durante la sesión del 25/08 hubo **OTRA IA/sesión editando este mismo repo sim
 - **IASheet** (`components/ui/IASheet.tsx`): 4 prompts locales con datos reales del `useShellData` del mes — `¿Cuánto llevo gastado?` (expense), `¿En qué gasto más?` (byCat max), `¿Voy pasado de presupuesto?` (budgets pct), `¿Cómo va mi balance?` (income-expense). Sin LLM (Phase 9 lo reemplazará). Verificado on-device: abre, muestra prompts.
 - Donut "Distribución" queda para **v1.1** (`react-native-svg` + prebuild).
 
+### U3 — by_category al backend ✅ 100% (backend + mobile, verificado)
+- **Backend** `balance/routes.ts`: `GET /v1/balance?month=YYYY-MM` ahora devuelve `by_category: [{category_id, slug, name, spent, budget, pct, budget_pct}]` (unión `spent` del mes + presupuestos vigentes, `pct=spent/expense`, `budget_pct=spent/budget`). Soporta `isMockMode` (SYSTEM_CATEGORIES) y Supabase real (fetch `categories` + `budgets×categories`). `Σ byCat.spent == expense` validado (`curl /v1/balance` → by_category suma 75.480).
+- **Mobile** `useShellData.ts`: prioriza `balance.by_category` (construye `byCat` desde `spent`), fallback cliente. Sin cambio visual, fuente de verdad pasa al backend.
+- **Deploy Railway**: `Dockerfile` `node:20→22` (supabase realtime exige WebSocket nativo) + `backend/package.json` `engines.node 22.x` (Nixpacks) + `GROQ_MODEL=qwen/qwen3.8-27b` + `EXPO_PUBLIC_API_URL=https://misgastos-production-b8c6.up.railway.app` fuera de LAN.
+
+### Notificaciones — habilitadas para v1 (parcial, reenvío manual validado)
+- **ALLOWLIST** por prefijo (`NotificationListener.ts` + `NotificationListener.kt`): `cl.android`=Banco Falabella, `com.mercadopago.wallet`, `com.falabella.falabellaApp`, `cl.bancochile`, `cl.bci`, `cl.santander`, `cl.bancoestado`, Wallet, Mach, Tenpo (+ `DEBUG_SELF=com.misgastos.app` para tests visibles).
+- **Reenvío nativo** `NotificationListener.kt` con `apiUrl` persistido en `SharedPreferences` (`saveApiUrl`/`loadApiUrl`), `Thread` `HttpURLConnection` a `/v1/ingestion/notification` (funciona con app cerrada), y `emitToJs` para refresco. `App.tsx` hace `setApiUrl(API_URL)` + `startListening(()=>reload)` + `flushQueue` + `resendActive` cada 30s y al volver a `active` (`AppState`).
+- **Verificación**: `Config → Disparar notificación visible Test` **sí crea** notificación y transacción (allowlist Test + POST nativo); `Reenviar notificaciones en pantalla` recorre `activeNotifications` y reinyecta lo que sigue en bandeja.
+- **Pendiente Transsion**: en este Tecno Camon 40 Pro (Android 16 HIOS) el dispatch del sistema a `NotificationListenerService` de terceros no es 100% fiable (adb `cmd notification post` llega a `cutepet` pero no a nuestro listener sin el toggle fresco). **Workaround validado**: reenvío manual + reintento automático al abrir. Se deja como pendiente documentado (requiere toggle `Acceso a notificaciones` Off→On + `Batería Sin restricciones / Inicio automático` tras cada reinstall).
+- **Limpieza**: `Dashboard`/`demoData`/`dataset100` (mobile) + `BalanceCard`/`BudgetBar` eliminados; `supabase.ts` simplificado; `Amount.tsx`/`ListRow.tsx` typefixes → `tsc --noEmit` **0 errores**.
+
 ### U3 — Categorías backend by_category (opcional) · Siguientes fases reales
 - **U3**: extender `/v1/balance` con `by_category`. Hoy `Categorías` calcula `byCat` en cliente desde `/v1/transactions`; con backend sería Σ==expense. Opcional pre-v1.
 - **Siguientes**: **Phase 9 Financial Advisor (Agente #2)** + **Phase 10 Hardening** (seguridad, performance, backups, Play Internal). Ver Roadmap §Phase 9/10 y §"Prueba notificaciones/email" abajo.
 
 ### Pendientes menores
-- FAB agrega solo Gasto/Ingreso (Transferencia deferida) — shell `FabMenu` sin Transferencia
-- `mobile/src/screens/Dashboard.tsx` **sin uso** (hero en shell). Borrar tras coordinar (OneDrive paralelo).
+- FAB agrega solo Gasto/Ingreso (Transferencia deferida) — `FabMenu` sin Transferencia
 - `/v1/accounts` sin modo mock (irrelevante con Supabase real)
-- Backend hosting (Railway/Fly) fuera de LAN — decidir antes de v1 real
-- Segundo usuario aislado (ADR-005): login → JWT real en Hardening
+- **Pendiente documentado — reenvío nativo Transsion**: en Tecno Camon 40 Pro el `onNotificationPosted` no se dispara 100% nativo para terceros; workaround validado es **Reenviar notificaciones en pantalla** + reintento automático al abrir. Queda para sesión dedicada (evaluar `AccessibilityService` como fallback).
+
+### Fase siguiente (v1 → v1.1)
+- **Hosting ya fuera de LAN** (Railway Node 22, `https://misgastos-production-b8c6.up.railway.app`).
+- **Inmediato (mañana, con compra real)**: validar captura de `cl.android` (Falabella) en segundo plano con los permisos ya concedidos (Acceso + Batería Sin restricciones). Si vuelve a fallar, activar `AccessibilityService` fallback.
+- **v1.1**: `Phase 9 Financial Advisor` (Agente #2), `Phase 7 iOS` (share extension + PDF), `OAuth Gmail` `gmail.readonly` (restricted, verificación Google), Hardening fino (JWT `Authorization: Bearer` → `supabase.auth.getUser`, `@fastify/rate-limit`, RLS test 2 usuarios §34, `audit_log`).
 
 ### Prueba notificaciones / reenvío email (aunque backend incompleto) — cómo probar HOY
 - **Backend ya listo para probar (sin OAuth Gmail)**: `POST /v1/ingestion/email` y `/v1/ingestion/notification` están activos en `isMockMode=false` y `true` (idempotencia `external_id` + `parser §14` + `AI → rule → dedup §15`). No necesitas OAuth para validar el flujo completo.
