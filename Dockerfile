@@ -1,5 +1,5 @@
-# MisGastos backend — Fastify (Node 20) para Railway
-FROM node:20-alpine
+# MisGastos backend — Fastify (Node 22 requerido por @supabase/realtime-js) para Railway
+FROM node:22-alpine
 
 WORKDIR /app
 
