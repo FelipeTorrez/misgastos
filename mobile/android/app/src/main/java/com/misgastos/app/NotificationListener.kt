@@ -15,9 +15,25 @@ class NotificationListener : NotificationListenerService() {
     var instance: NotificationListener? = null
     var reactContext: ReactApplicationContext? = null
     var apiUrl: String? = null
+    private const val PREFS = "misgastos_prefs"
+    private const val KEY_API_URL = "api_url"
 
-    // Filtro nativo (sin JS): solo reenvía bancos/Wallet/retail. last-segment-based (contains).
-    // Match por prefijo de paquete (exacto o sub-app). p.ej. "cl.bancochile" matchea "cl.bancochile.mi_banco".
+    fun loadApiUrl(ctx: android.content.Context): String? {
+      if (apiUrl != null) return apiUrl
+      return try {
+        val p = ctx.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+        p.getString(KEY_API_URL, null)?.also { apiUrl = it }
+      } catch (_: Exception) { null }
+    }
+    fun saveApiUrl(ctx: android.content.Context, url: String) {
+      apiUrl = url
+      try {
+        ctx.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+          .edit().putString(KEY_API_URL, url).apply()
+      } catch (_: Exception) {}
+    }
+
+    // Sincronizado con mobile/src/native/allowlist.json y backend/src/modules/ingestion/allowlist.ts
     val ALLOWLIST = listOf(
       "cl.android",                          // Banco Falabella
       "com.falabella.falabellaApp",          // Falabella retail
@@ -26,11 +42,17 @@ class NotificationListener : NotificationListenerService() {
       "cl.bci",                              // BCI
       "cl.santander",                        // Santander
       "cl.bancoestado",                      // BancoEstado
+      "cl.scotiabank",                       // Scotiabank
+      "cl.itau",                             // Itaú
       "com.google.android.apps.walletnfcrel",// Google Wallet
       "com.google.android.apps.nbu.paisa",   // Google Wallet (OEM)
+      "com.google.android.gms",              // Google Play Services (Wallet via GMS)
       "com.mach",                            // Mach
-      "com.tenpo"                            // Tenpo
+      "com.tenpo",                           // Tenpo
+      "cl.tenpo"                             // Tenpo CL
     )
+    // Test: nuestras propias notificaciones de prueba
+    const val DEBUG_SELF = "com.misgastos.app"
   }
 
   fun resendActiveNotifications() {
@@ -43,7 +65,8 @@ class NotificationListener : NotificationListenerService() {
     Log.d("NotificationListener", "ENTRY pkg=${sbn.packageName}")
     try {
       val pkg = sbn.packageName ?: return
-      if (ALLOWLIST.none { pkg.startsWith(it) }) return
+      val isSelfTest = pkg == DEBUG_SELF && (sbn.notification.extras.getCharSequence("android.title")?.toString() ?: "").contains("Test", true)
+      if (!isSelfTest && ALLOWLIST.none { pkg.startsWith(it) }) return
 
       val extras = sbn.notification.extras
       val title = extras.getCharSequence("android.title")?.toString() ?: ""
@@ -51,10 +74,14 @@ class NotificationListener : NotificationListenerService() {
         ?: extras.getCharSequence("android.bigText")?.toString() ?: ""
       if (title.isEmpty() && text.isEmpty()) return
 
-      Log.d("NotificationListener", "captured pkg=$pkg title=$title apiUrl=$apiUrl")
+      val baseUrl = apiUrl ?: loadApiUrl(this) ?: run {
+        Log.d("NotificationListener", "captured pkg=$pkg title=$title apiUrl=null skip")
+        return
+      }
+      Log.d("NotificationListener", "captured pkg=$pkg title=$title apiUrl=$baseUrl")
 
       // 1) Reenvío NATIVO: funciona aunque la app esté cerrada/matada.
-      apiUrl?.let { base ->
+      baseUrl.let { base ->
         val extId = "notif-$pkg-${sbn.id}-${sbn.postTime}"
         Thread {
           sendToBackend(base, pkg, title, text, iso(sbn.postTime), extId)
@@ -72,13 +99,17 @@ class NotificationListener : NotificationListenerService() {
   override fun onListenerConnected() {
     super.onListenerConnected()
     instance = this
+    // apiUrl puede venir de prefs si el servicio revivió sin JS
+    if (apiUrl == null) loadApiUrl(this)
     Log.d("NotificationListener", "onListenerConnected apiUrl=$apiUrl")
     try {
-      val base = apiUrl ?: return
+      val base = apiUrl ?: loadApiUrl(this) ?: return
       val actives = activeNotifications ?: return
       for (sbn in actives) {
         val pkg = sbn?.packageName ?: continue
-        if (ALLOWLIST.none { pkg.startsWith(it) }) continue
+        val t = sbn.notification?.extras?.getCharSequence("android.title")?.toString() ?: ""
+        val isSelfTest = pkg == DEBUG_SELF && t.contains("Test", true)
+        if (!isSelfTest && ALLOWLIST.none { pkg.startsWith(it) }) continue
         val extras = sbn.notification?.extras ?: continue
         val title = extras.getCharSequence("android.title")?.toString() ?: ""
         val text = extras.getCharSequence("android.text")?.toString()

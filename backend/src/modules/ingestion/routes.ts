@@ -4,6 +4,7 @@ import { supabase, getUserId, isMockMode } from "../../lib/supabase.js";
 import { parseEmail, normalizeForAI } from "./parser.js";
 import { isDuplicate } from "./dedup.js";
 import { mockStore } from "../../lib/mockStore.js";
+import { allowlistHit } from "./allowlist.js";
 
 function toTitleCase(s: string): string {
   return s.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
@@ -35,6 +36,7 @@ async function processIngestion(data: any, userId: string) {
   const { sender, subject, raw_content, external_id, received_at, source } = data;
   const p = parseEmail(raw_content);
   const normalized = normalizeForAI(raw_content);
+  const senderAllowlisted = allowlistHit(sender);
 
   // Idempotencia por external_id
   if (external_id) {
@@ -49,17 +51,20 @@ async function processIngestion(data: any, userId: string) {
     if (existingId) return { status: 200, body: { dedup: true, raw_event_id: existingId, message: "duplicate email ignored", parsed: p, normalized, mocked: isMockMode } };
   }
 
-  // RawEvent inmutable §12
+  // RawEvent inmutable §12 — incluye metadata guard/allowlist para auditoría
   let rawEventId: string;
   let rawEvent: any;
+  const rawMetadata: any = { normalized, allowlist_hit: senderAllowlisted, sender };
   if (isMockMode) {
     rawEventId = `mock-${crypto.randomUUID()}`;
-    rawEvent = { id: rawEventId, user_id: userId, source, external_id: external_id ?? null, sender: sender ?? null, subject: subject ?? null, received_at: received_at ?? new Date().toISOString(), mocked: true };
+    rawEvent = { id: rawEventId, user_id: userId, source, external_id: external_id ?? null, sender: sender ?? null, subject: subject ?? null, received_at: received_at ?? new Date().toISOString(), mocked: true, metadata: rawMetadata };
     mockStore.rawEvents = mockStore.rawEvents ?? {};
     mockStore.rawEvents[`${source}:${external_id}`] = rawEventId;
+    (mockStore as any).rawEventsMeta = (mockStore as any).rawEventsMeta ?? {};
+    (mockStore as any).rawEventsMeta[rawEventId] = rawMetadata;
     mockStore._persist();
   } else {
-    const { data: raw, error } = await supabase.from("raw_events").insert({ user_id: userId, source, external_id: external_id ?? null, sender: sender ?? null, subject: subject ?? null, raw_content, received_at: received_at ?? new Date().toISOString(), metadata: { normalized } }).select().single();
+    const { data: raw, error } = await supabase.from("raw_events").insert({ user_id: userId, source, external_id: external_id ?? null, sender: sender ?? null, subject: subject ?? null, raw_content, received_at: received_at ?? new Date().toISOString(), metadata: rawMetadata }).select().single();
     if (error) return { status: 500, body: { error: `raw_events insert: ${error.message}` } };
     rawEvent = raw;
     rawEventId = raw.id;
@@ -74,25 +79,23 @@ async function processIngestion(data: any, userId: string) {
   let matchedRule: any = null;
   let ai: any = null;
 
-  // Step 1: reglas contra merchant del parser
-  if (p.amount && p.merchant) {
+  // Step 1: reglas contra merchant del parser (solo si hay monto)
+  if (p.amount !== null && p.merchant) {
     matchedRule = await findRule(userId, p.merchant.toLowerCase().trim());
   }
 
-  // Step 2+3: AI y luego reglas contra merchant de la IA
-  if (!matchedRule && p.amount) {
+  // Step 2+3: AI guard obligatorio cuando hay monto detectado
+  if (p.amount !== null && !matchedRule) {
     try {
       const { createAIProvider } = await import("../../ai/providers/AIProvider.js");
       const provider = createAIProvider(process.env.GROQ_API_KEY ? "groq" : "mock");
       let categories: string[];
-      let catMap: Record<string, string> = {}; // slug -> id
       if (isMockMode) {
         categories = ["supermercado", "transporte", "suscripciones", "restaurantes", "servicios", "otros"];
       } else {
         const { data: cats, error } = await supabase.from("categories").select("id, slug").limit(50);
         if (error) return { status: 500, body: { error: `categories: ${error.message}` } };
         categories = (cats ?? []).map((c: any) => c.slug);
-        catMap = Object.fromEntries((cats ?? []).map((c: any) => [c.slug, c.id]));
       }
       let userRules: { merchant: string; preferred_category: string }[] = [];
       if (isMockMode) {
@@ -103,18 +106,65 @@ async function processIngestion(data: any, userId: string) {
       }
       ai = await provider.classify({ normalized_text: normalized, parser_hints: { amount: p.amount, date: p.date ?? undefined, merchant_guess: p.merchant ?? undefined }, categories, user_rules: userRules, locale: "es-CL" });
 
-      // Step 3: post-AI rule check
+      // Guard: si IA dice no es transacción, no continuar a insert
+      if (ai && ai.is_transaction === false) {
+        // Actualizar raw metadata con guard result (best effort)
+        if (!isMockMode) {
+          await supabase.from("raw_events").update({ metadata: { ...rawMetadata, guard: { is_transaction: false, reason: ai.reason, confidence: ai.confidence } } }).eq("id", rawEventId);
+        } else if ((mockStore as any).rawEventsMeta) {
+          (mockStore as any).rawEventsMeta[rawEventId] = { ...rawMetadata, guard: { is_transaction: false, reason: ai.reason } };
+        }
+        return {
+          status: 200,
+          body: {
+            raw_event: rawEvent, parsed: p, normalized, transaction: null, mocked: isMockMode,
+            classification_source: "ai_guard",
+            ai,
+            dedup: { is_duplicate: false },
+            ignored_reason: ai.reason ?? "promo_or_informational",
+            sender_allowlisted: senderAllowlisted,
+            next: `ignored by guard: ${ai.reason}`,
+          }
+        };
+      }
+
+      // Step 3: post-AI rule check (solo si es transacción real)
       if (ai?.merchant && ai.merchant !== "Desconocido") {
         matchedRule = await findRule(userId, ai.merchant.toLowerCase().trim());
       }
     } catch (e: any) {
       console.error("AI classify error:", e?.message ?? e);
-      ai = null; // sin AI → cae a parser
+      // Sin IA y con monto, no crear gasto fantasma — devolver solo raw_event para retry manual
+      return {
+        status: 200,
+        body: {
+          raw_event: rawEvent, parsed: p, normalized, transaction: null, mocked: isMockMode,
+          classification_source: "ai_error",
+          dedup: { is_duplicate: false },
+          warning: `AI unavailable, transaction not created: ${e?.message?.slice(0, 120) ?? e}`,
+          sender_allowlisted: senderAllowlisted,
+          next: "needs AI retry",
+        }
+      };
     }
   }
 
+  // Si no hay monto, no hay transacción (sin llamar a IA) — solo raw_event
+  if (p.amount === null) {
+    return {
+      status: 201,
+      body: {
+        raw_event: rawEvent, parsed: p, normalized, transaction: null, mocked: isMockMode,
+        classification_source: "no_amount",
+        dedup: { is_duplicate: false },
+        sender_allowlisted: senderAllowlisted,
+        next: "no amount detected → no transaction — needs manual review",
+      }
+    };
+  }
+
   if (matchedRule) {
-    finalCategorySlugOrId = matchedRule.preferred_category_id; // en DB real es id ya
+    finalCategorySlugOrId = matchedRule.preferred_category_id;
     finalCategoryId = isMockMode ? matchedRule.preferred_category_id : matchedRule.preferred_category_id;
     aiConfidence = 1.0;
     aiNeedsReview = false;
@@ -128,12 +178,12 @@ async function processIngestion(data: any, userId: string) {
     classificationSource = "ai";
   }
 
-  // Normaliza merchant para display (Title Case: Jumbo, no jumbo)
+  // Normaliza merchant para display
   if (finalMerchant !== "Desconocido" && finalMerchant !== "Transferencia") {
     finalMerchant = toTitleCase(finalMerchant);
   }
 
-  // Resolver category_id (slug → uuid) en modo real para path AI/parser
+  // Resolver category_id en modo real para path AI/parser
   if (!isMockMode && finalCategorySlugOrId && !finalCategoryId) {
     if (/^[0-9a-f-]{36}$/i.test(finalCategorySlugOrId)) {
       finalCategoryId = finalCategorySlugOrId;
@@ -143,27 +193,35 @@ async function processIngestion(data: any, userId: string) {
     }
   }
 
-  // Dedup §15
+  // Dedup §15 — solo si hay transacción real y monto
   let dedupFound: any = null;
-  if (p.amount) {
+  if (p.amount !== null) {
     const effectiveDate = p.date ?? new Date().toISOString().slice(0, 10);
     const type = (ai?.transaction_type as any) ?? (p.operation === "transfer" ? "transfer" : "expense");
-    const candidate = { amount: p.amount, date: effectiveDate, time: p.time, merchant: finalMerchant, type };
-    let recentTxs: any[];
-    if (isMockMode) {
-      recentTxs = mockStore.listTransactions(userId);
-    } else {
-      const { data: recent, error } = await supabase.from("transactions").select("id, amount, date, merchant, type, status").eq("user_id", userId).order("date", { ascending: false }).limit(50);
-      if (error) return { status: 500, body: { error: `dedup query: ${error.message}` } };
-      recentTxs = (recent as any[]) ?? [];
+    if (type !== "none") {
+      const candidate = { amount: p.amount, date: effectiveDate, time: p.time, merchant: finalMerchant, type };
+      let recentTxs: any[];
+      if (isMockMode) {
+        recentTxs = mockStore.listTransactions(userId);
+      } else {
+        const { data: recent, error } = await supabase.from("transactions").select("id, amount, date, merchant, type, status").eq("user_id", userId).order("date", { ascending: false }).limit(50);
+        if (error) return { status: 500, body: { error: `dedup query: ${error.message}` } };
+        recentTxs = (recent as any[]) ?? [];
+      }
+      dedupFound = isDuplicate(candidate as any, recentTxs);
     }
-    dedupFound = isDuplicate(candidate as any, recentTxs);
   }
 
-  // Transaction
+  // Transaction — solo si guard pasó y hay monto
   let transaction: any = null;
-  if (p.amount) {
+  if (p.amount !== null && !(ai && ai.is_transaction === false)) {
     const type = (ai?.transaction_type as any) ?? (p.operation === "transfer" ? "transfer" : "expense");
+    if (type === "none") {
+      return {
+        status: 200,
+        body: { raw_event: rawEvent, parsed: p, normalized, transaction: null, ai, dedup: { is_duplicate: false }, ignored_reason: "guard_none_type", next: "ignored guard none" }
+      };
+    }
     let status: string, duplicateOf: string | null = null;
     if (dedupFound) { status = "duplicate"; duplicateOf = dedupFound.id; }
     else if (classificationSource === "rule") status = "pending_ai";
@@ -197,6 +255,8 @@ async function processIngestion(data: any, userId: string) {
       normalized, transaction, mocked: isMockMode,
       classification_source: classificationSource,
       matched_rule: matchedRule ? { id: matchedRule.id, category: matchedRule.preferred_category_id, hits: matchedRule.hits_count } : null,
+      ai: ai ?? undefined,
+      sender_allowlisted: senderAllowlisted,
       next: isDup ? `duplicate detected → original ${dedupFound.id}` : transaction ? `transaction (${transaction.status}) — ${classificationSource === "rule" ? "Rule (skip AI)" : `AI: ${classificationSource}`}` : "needs manual review",
       warning: isMockMode ? "Modo demo (sin Supabase)." : undefined,
     }

@@ -1,7 +1,7 @@
 # HANDOFF — Contexto completo para continuar desarrollo
 
-> Última actualización: 2026-08-27 (madrugada) — **U3 by_category + Notificaciones nativo + Limpieza código muerto + U6 cerrados** ✅ — notificaciones con reenvío manual funcionando, visual de pruebas corregido. Build release con `EXPO_PUBLIC_API_URL=https://misgastos-production-b8c6.up.railway.app` (fuera de LAN) y `GROQ_MODEL=qwen/qwen3.8-27b`.
-> Siguiente: **Probar compra real mañana (notificación cl.android) + Phase 9 Advisor + Hardening/Hosting fino**. Ver §6 y `spec/roadmap.md`.
+> Última actualización: 2026-08-27 (tarde) — **Notification Guard (IA) + Allowlist v2 + Parser CLP** ✅ — `134/134` tests (9 nuevos guard), `spec/sdd-notification-guard.md` aplicado. Build release con `EXPO_PUBLIC_API_URL=https://misgastos-production-b8c6.up.railway.app` (fuera de LAN) y `GROQ_MODEL=qwen/qwen3.8-27b`.
+> Siguiente: **Rebuild APK (allowlist gms) + deploy Railway + re-probar Wallet gms + Phase 9 Advisor**. Ver §6 y `spec/roadmap.md`.
 
 > ⚠️ Cambió la arquitectura de navegación: ahora hay un **shell persistente** (mes + balance hero + sub-tabs anidados + FAB global). Detalle abajo en §6.
 
@@ -21,7 +21,7 @@
 | Backend | Node.js + Fastify + tsx (watch) + Node 22 en Railway (prod), Zod para validación |
 | DB | Supabase (Postgres + RLS) — **conectada en cloud (proyecto bqnktrfwoxetbirrodmo), modo real activo** |
 | AI | Groq API (`qwen/qwen3.8-27b` actual, antes `llama-3.1-70b`) con fallback mock — **Groq real activo** |
-| Tests | Vitest — **125/125 passing** · `mobile: tsc --noEmit` **0 errores** (se corrigieron `Amount.tsx`/`ListRow.tsx`) |
+| Tests | Vitest — **134/134 passing** (18 files) · `mobile: tsc --noEmit` **0 errores** (se corrigieron `Amount.tsx`/`ListRow.tsx`) · nuevo `tests/ingestion.guard.test.ts` 9 tests guard |
 
 ### Estado de fases
 - ✅ Phase 0: Spec + ADRs 001–007 (`spec/`, `docs/decisions/`)
@@ -98,28 +98,29 @@ Store **persistido a disco** (`backend/.mockstore.json`) + memoria:
 - `rules[]`, `transactions[]`, `budgets[]`, `rawEvents{}` (para idempotencia)
 - Métodos: list/find/upsert/update/delete/incrementHits + `_persist()` tras cada mutación; `reset()`; loadFromDisk() al arrancar (skip en NODE_ENV=test)
 
-### Flujo de ingesta (Phase 8 final) — `backend/src/modules/ingestion/routes.ts`
+### Flujo de ingesta (Guard IA) — `backend/src/modules/ingestion/routes.ts` + `spec/sdd-notification-guard.md`
 ```
-POST /v1/ingestion/email | notification
-  ├─ external_id existe? → respuesta idempotente (dedup por external_id)
-  ├─ parseEmail() parser determinístico §14 (amount/date/time/bank/last4/merchant/operation)
-  ├─ STEP 1: findRule(parser.merchant) → si matchea:
-  │    category=rule, confidence=1.0, source="rule", SKIP AI, hits++
-  ├─ STEP 2: si no → AI classify (Groq o mock)
-  ├─ STEP 3 (NUEVO): findRule(ai.merchant) si ai.merchant ≠ "Desconocido"
-  │    → si matchea: override categoría, source="rule", hits++
-  │    → si no: source="ai", confianza de AI
-  ├─ dedup §15: amount+date(fallback hoy)+merchant fuzzy+type contra últimas txs
-  │    duplicate → status="duplicate", duplicate_of=<id original>
-  └─ insert transaction (status: pending_ai | pending_review | duplicate)
+POST /v1/ingestion/email | notification  (source=android_notification para notifs)
+  ├─ allowlistHit(sender) → metadata.allowlist_hit (no bloquea, audita)
+  ├─ external_id existe? → idempotente
+  ├─ parseEmail() §14 (amount con CLP1,250/ $1.300 / $750.000) + normalizeForAI
+  ├─ if p.amount==null → solo raw_events (no_amount, sin IA) — no crea tx
+  ├─ STEP 1: findRule(parser.merchant) si matchea → rule, skip AI
+  ├─ STEP 2: AI classify Guard obligatorio si p.amount!=null y no rule
+  │    GroqProvider.ts → is_transaction? false (promo "cupo aprobado 750k") → 200 ignored, transaction:null
+  │    si true → amount/merchant/category/transaction_type (none/expense/transfer)
+  ├─ STEP 3: findRule(ai.merchant) si is_transaction true y merchant ≠ Desconocido
+  ├─ dedup §15 (solo si type!="none") → duplicate?
+  └─ insert transaction solo si is_transaction true y type!="none" (pending_ai|pending_review|duplicate)
 ```
 
-### Provider mock (`backend/src/ai/providers/GroqProvider.ts`)
+### Provider Guard (`backend/src/ai/providers/GroqProvider.ts` + `AIProvider.ts`)
+`AgentOutputSchema` extendido: `is_transaction:boolean`, `transaction_type: expense|income|transfer|none`, `amount: nonnegative` (0 si guard bloquea).
 Sin `GROQ_API_KEY` → `mock()`:
-- Extrae merchant del texto con lista KNOWN (Lider, Jumbo, Spotify, Netflix, Uber, Enel, Movistar, etc.) si parser no dio merchant_guess — **fix clave de esta sesión**
-- Categorías por regex (supermercado/transporte/suscripciones/restaurantes/servicios)
-- Reglas usuario tienen prioridad dentro del prompt/mock
-- confidence: 0.88 conocido / 0.5 desconocido-o-sin-monto; needs_review acorde
+- **Guard primero**: si texto contiene `cupo.*aprobado|preaprobado|oferta|simula.*crédito` → `is_transaction=false, type=none, amount=0, reason=promo_cupo_aprobado, confidence 0.95` — evita gasto fantasma `$750.000`.
+- Si is_transaction true → extrae merchant KNOWN (Lider/Jumbo/Spotify...) + categorías regex + reglas prioridad
+- confidence: 0.88 conocido / 0.5 desconocido; needs_review acorde
+Prompt system: `Transaction Intelligence + Guard` con few-shot promo vs compra real, CLP1,250=1250.
 
 ### Rutas backend (version 0.3.0-phase8, puerto 3000)
 | Ruta | Método | Notas mock mode |
@@ -138,7 +139,7 @@ Sin `GROQ_API_KEY` → `mock()`:
 - `mobile/src/theme/tokens.ts` + `categoryIcons.tsx`: paleta #0C1322/#182238/#223052 + 14 categorías MCI es-CL
 - `mobile/src/components/ui/`: `MIcon` (siempre), `BalanceHero`, `AddMoveModal`, `IASheet` (4 prompts locales del mes), `SwipeRow` (Pressable opaco, encuadre corregido), Card, Progress (+ `color` para tinte categoría), CategoryCircle/Tag, Amount (fix `color:string`), MonthPager, EmptyState, StatusBadge es, ListRow (fix `s.day`), Sheet, ScreenHeader
 - `mobile/src/screens/`: **Categorias** (distribución con `byCat` + últimos 5, `Progress` con `catIcon.color`), **Movimientos** (sub-tab con `SwipeRow` compartido), **Presupuesto** (metas, `CopyPrev`, `deleteBudget`, `editBudget` al tocar, `SwipeRow` con `Pressable`), `IngestionTest` (+ `onReload`), `Config` (+ `Notificaciones` con `simulate`/`resendActive`/`postTestVisible` + `onReload`), `GaleriaUI` sin sonda; `Dashboard`/`BalanceCard`/`BudgetBar`/`demoData`/`dataset100` (mobile) **eliminados** (código muerto)
-- `mobile/src/native/NotificationListener.ts` + `android/.../NotificationListener*.kt`: `ALLOWLIST` por prefijo (`cl.android`→Falabella), `DEBUG_SELF`, `postTestNotification`, `setApiUrl` persistido en `SharedPreferences`, `startListening` via `NativeEventEmitter`
+- `mobile/src/native/allowlist.json` (15 prefijos, fuente única) + `backend/src/modules/ingestion/allowlist.ts` espejo server-side `isAllowlisted()`; `mobile/src/native/NotificationListener.ts` + `android/.../NotificationListener*.kt` sincronizados v2: `cl.android`=Falabella, `com.google.android.gms`=Wallet via GMS (Billetera de Google), `cl.bancochile/bci/santander/bancoestado/scotiabank/itau`, `walletnfcrel`, `mercadopago`, `mach/tenpo` (`DEBUG_SELF` tests, `postTestNotification`, `setApiUrl` en `SharedPreferences`)
 - `mobile/.env.local`: `EXPO_PUBLIC_API_URL=https://misgastos-production-b8c6.up.railway.app` (fuera de LAN, Railway Node 22) — `EXPO_PUBLIC_SUPABASE_URL` aún en LAN pero sin uso
 - APK **release** INSTALADA (bundle embebido, contiene URL Railway); debug NO se usa
 
@@ -161,6 +162,14 @@ Durante la sesión del 25/08 hubo **OTRA IA/sesión editando este mismo repo sim
 ---
 
 ## 4. Cambios de la última sesión (lo más reciente primero)
+
+-12. **Notification Guard + Allowlist v2 + Parser CLP (Guard IA)** — 2026-08-27 tarde — `spec/sdd-notification-guard.md` aplicado:
+   - **Problema**: notifs promo `cupo aprobado por $750.000` con monto eran creadas como `expense` fantasma; Wallet `CLP1,250` no parseaba (regex solo `$`) y `Billetera de Google` venía de `com.google.android.gms` no allowlistada → solo Falabella entraba fuera de LAN (validado por usuario, 2 compras Angaroa $1.300).
+   - **Parser** `parser.ts:21` soporta `CLP` + `,` miles (`1,250→1250`), `Wallet` amount fix.
+   - **Guard IA** `AIProvider.ts:3` `is_transaction`+`none` + `GroqProvider.ts:17` prompt Guard + `mock()` promo `cupo|oferta|preaprobado → is_transaction=false`. `routes.ts:34` pipeline con gate obligatorio: `p.amount==null → no_amount`, `is_transaction==false → 200 ignored (ai_guard, transaction:null)`, AI error no crea gasto. `allowlistHit(sender)` auditado en `raw_events.metadata`.
+   - **Allowlist v2**: `mobile/src/native/allowlist.json` (15 entries) + `backend/src/modules/ingestion/allowlist.ts` + sync `NotificationListener.ts:15`/`NotificationListener.kt:36` añade `com.google.android.gms`, `cl.scotiabank/itau/tenpo`.
+   - **Tests**: nuevo `backend/tests/ingestion.guard.test.ts` 9 tests (parser CLP, gms, promo guard, Falabella $1.300, no_amount). Vitest **125→134** (18 files). `mobile tsc --noEmit` 0.
+   - **Pendiente**: `assembleRelease` + deploy Railway para re-probar Wallet gms en device.
 
 -11. **U1 + U2 completadas y validadas por el usuario** (2026-08-26):
    - **Fix crítico de red**: el `prebuild --clean` borró `usesCleartextTraffic` → la app no podía llamar a `http://192.168.1.88:3000` (Android 9+ bloquea HTTP). Fix: `app.json → android.usesCleartextTraffic: true` + `android:usesCleartextTraffic="true"` en AndroidManifest. **Añadir a gotchas: tras prebuild verificar cleartext.**
@@ -326,12 +335,14 @@ Durante la sesión del 25/08 hubo **OTRA IA/sesión editando este mismo repo sim
 - **Mobile** `useShellData.ts`: prioriza `balance.by_category` (construye `byCat` desde `spent`), fallback cliente. Sin cambio visual, fuente de verdad pasa al backend.
 - **Deploy Railway**: `Dockerfile` `node:20→22` (supabase realtime exige WebSocket nativo) + `backend/package.json` `engines.node 22.x` (Nixpacks) + `GROQ_MODEL=qwen/qwen3.8-27b` + `EXPO_PUBLIC_API_URL=https://misgastos-production-b8c6.up.railway.app` fuera de LAN.
 
-### Notificaciones — habilitadas para v1 (parcial, reenvío manual validado)
-- **ALLOWLIST** por prefijo (`NotificationListener.ts` + `NotificationListener.kt`): `cl.android`=Banco Falabella, `com.mercadopago.wallet`, `com.falabella.falabellaApp`, `cl.bancochile`, `cl.bci`, `cl.santander`, `cl.bancoestado`, Wallet, Mach, Tenpo (+ `DEBUG_SELF=com.misgastos.app` para tests visibles).
+### Notificaciones — Guard IA + Allowlist v2 (pruebas fuera LAN OK)
+- **Prueba usuario 27/08 fuera LAN**: Falabella `cl.android` 2 compras Angaroa $1.300/$1.250 ingeridas correctamente vía `https://misgastos-production-b8c6.up.railway.app` (confirma `setApiUrl` persistido OK); `Billetera de Google` no entraba por `gms` no allowlistado + parser sin `CLP,` — fix v2.
+- **ALLOWLIST v2** `allowlist.json`+`allowlist.ts` (15 prefijos): `cl.android`=Falabella, `com.mercadopago.wallet`, `com.falabella.falabellaApp`, `cl.bancochile/bci/santander/bancoestado/scotiabank/itau`, `walletnfcrel/paisa`, **`com.google.android.gms`** (Wallet via GMS), Mach/Tenpo (+ `DEBUG_SELF=com.misgastos.app`).
+- **Guard IA** `routes.ts`: `is_transaction` false para promo `cupo 750k` → `transaction:null` (no gasto fantasma); `CLP1,250` vía `gms` → `expense 1250` (parsers `CLP` + `,`); `p.amount==null → no_amount` sin IA. Tests `ingestion.guard.test.ts` 9 casos validan.
 - **Reenvío nativo** `NotificationListener.kt` con `apiUrl` persistido en `SharedPreferences` (`saveApiUrl`/`loadApiUrl`), `Thread` `HttpURLConnection` a `/v1/ingestion/notification` (funciona con app cerrada), y `emitToJs` para refresco. `App.tsx` hace `setApiUrl(API_URL)` + `startListening(()=>reload)` + `flushQueue` + `resendActive` cada 30s y al volver a `active` (`AppState`).
 - **Verificación**: `Config → Disparar notificación visible Test` **sí crea** notificación y transacción (allowlist Test + POST nativo); `Reenviar notificaciones en pantalla` recorre `activeNotifications` y reinyecta lo que sigue en bandeja.
 - **Pendiente Transsion**: en este Tecno Camon 40 Pro (Android 16 HIOS) el dispatch del sistema a `NotificationListenerService` de terceros no es 100% fiable (adb `cmd notification post` llega a `cutepet` pero no a nuestro listener sin el toggle fresco). **Workaround validado**: reenvío manual + reintento automático al abrir. Se deja como pendiente documentado (requiere toggle `Acceso a notificaciones` Off→On + `Batería Sin restricciones / Inicio automático` tras cada reinstall).
-- **Limpieza**: `Dashboard`/`demoData`/`dataset100` (mobile) + `BalanceCard`/`BudgetBar` eliminados; `supabase.ts` simplificado; `Amount.tsx`/`ListRow.tsx` typefixes → `tsc --noEmit` **0 errores**.
+- **Limpieza**: `Dashboard`/`demoData`/`dataset100` (mobile) + `BalanceCard`/`BudgetBar` eliminados; `supabase.ts` simplificado; `Amount.tsx`/`ListRow.tsx` typefixes → `tsc --noEmit` **0 errores**. Vitest `134/134`.
 
 ### U3 — Categorías backend by_category (opcional) · Siguientes fases reales
 - **U3**: extender `/v1/balance` con `by_category`. Hoy `Categorías` calcula `byCat` en cliente desde `/v1/transactions`; con backend sería Σ==expense. Opcional pre-v1.
@@ -343,8 +354,8 @@ Durante la sesión del 25/08 hubo **OTRA IA/sesión editando este mismo repo sim
 - **Pendiente documentado — reenvío nativo Transsion**: en Tecno Camon 40 Pro el `onNotificationPosted` no se dispara 100% nativo para terceros; workaround validado es **Reenviar notificaciones en pantalla** + reintento automático al abrir. Queda para sesión dedicada (evaluar `AccessibilityService` como fallback).
 
 ### Fase siguiente (v1 → v1.1)
-- **Hosting ya fuera de LAN** (Railway Node 22, `https://misgastos-production-b8c6.up.railway.app`).
-- **Inmediato (mañana, con compra real)**: validar captura de `cl.android` (Falabella) en segundo plano con los permisos ya concedidos (Acceso + Batería Sin restricciones). Si vuelve a fallar, activar `AccessibilityService` fallback.
+- **Hosting ya fuera de LAN** (Railway Node 22, `https://misgastos-production-b8c6.up.railway.app`). **Guard v2 pendiente deploy**: `npm run deploy` Railway + `assembleRelease` APK (gms) + re-probar Wallet `CLP1,250` vs promo `750k` ignorada.
+- **Falabella fuera LAN ya validada** (27/08): 2 compras Angaroa ingresadas OK sin estar en LAN.
 - **v1.1**: `Phase 9 Financial Advisor` (Agente #2), `Phase 7 iOS` (share extension + PDF), `OAuth Gmail` `gmail.readonly` (restricted, verificación Google), Hardening fino (JWT `Authorization: Bearer` → `supabase.auth.getUser`, `@fastify/rate-limit`, RLS test 2 usuarios §34, `audit_log`).
 
 ### Prueba notificaciones / reenvío email (aunque backend incompleto) — cómo probar HOY
@@ -389,12 +400,13 @@ PLAN-dev-client-fix.md                        → análisis root cause native mo
 Invoke-RestMethod http://localhost:3000/health
 
 # 2. Tests verdes?
-cd backend; npx vitest run    # esperar: 17 files, 125 tests passed
+powershell -ExecutionPolicy Bypass -Command "cd backend; npx vitest run"    # esperar: 18 files, 134 tests passed (incluye ingestion.guard)
 
 # 3. Flujo reglas funciona?
 Invoke-RestMethod -Uri http://localhost:3000/v1/rules -Method POST -Headers @{"Content-Type"="application/json"} -Body '{"merchant_normalized":"test","preferred_category_id":"00000000-0000-0000-0000-000000000001"}'
 Invoke-RestMethod http://localhost:3000/v1/rules   # debe listar la regla creada
 
 # 4. Teléfono alcanza el backend? (con app abierta en Config tab o Probar)
-# La app apunta a http://192.168.1.88:3000
+# La app apunta a https://misgastos-production-b8c6.up.railway.app (fuera LAN) — ver mobile/.env.local
+# Guard pruebas: promo 750k -> transaction null, Wallet CLP1,250 via gms -> transaction 1250 (ver tests/ingestion.guard.test.ts)
 ```

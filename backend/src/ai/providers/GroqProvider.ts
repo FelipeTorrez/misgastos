@@ -14,12 +14,17 @@ export class GroqProvider {
       ? `Reglas usuario (prioridad): ${input.user_rules.map(r => `${r.merchant}→${r.preferred_category}`).join("; ")}`
       : "Sin reglas";
 
-    const system = `Eres Transaction Intelligence (Agente #1). Convierte texto financiero chileno no estructurado en JSON ESTRICTO según schema.
+    const system = `Eres Transaction Intelligence + Guard (Agente #1). Convierte texto financiero chileno no estructurado en JSON ESTRICTO según schema.
+DECISIÓN PRIMARIA — is_transaction:
+- is_transaction=true SOLO si el texto describe movimiento REAL de dinero (compra/pago/giro/retiro/transferencia/abono/depósito) con monto ejecutado y comercio/cuenta.
+- is_transaction=false si es oferta/promo/cupo aprobado/preaprobado/simulación/recordatorio informativo/publicidad/alerta sin consumo ("tienes un nuevo cupo aprobado por 750.000", "simula tu crédito", "oferta"). En ese caso pon transaction_type="none", amount=0, needs_review=false, confidence 0.95, reason="promo_cupo_aprobado".
+- Si is_transaction=false, ignora amount aunque exista en texto.
+REGLAS CUANDO is_transaction=true:
 - Usa parser_hints si son confiables, pero corrige si el texto contradice.
-- merchant: UNA sola marca en Title Case (ej "Jumbo", "Lider", "Spotify"). Solo el nombre del comercio, sin preposiciones ("en","on","de","por"), sin sufijos ni palabras extra. Máx 2 palabras, primera letra de cada palabra en mayúscula.
-- category: elige SOLO de [${categories}] (usa "otros" si dudas).
-- amount: CLP entero sin puntos, debe coincidir con texto o hints.
-- Si amount es null o no hay monto claro, pon confidence 0.4 y needs_review true.
+- merchant: UNA sola marca en Title Case (ej "Jumbo", "Lider", "Spotify"). Solo el nombre del comercio, sin preposiciones ("en","on","de","por"), sin sufijos. Máx 2 palabras.
+- category: elige SOLO de [${categories}] (usa "otros" si dudas). transaction_type expense|income|transfer.
+- amount: CLP entero sin puntos, debe coincidir con texto o hints. CLP1,250 = 1250, $1.300 = 1300.
+- Si amount es null o no hay monto claro, pon is_transaction=false si es informativo, o confidence 0.4 y needs_review true si dudoso.
 - Respeta reglas usuario si merchant coincide.
 - No inventes datos. JSON solo.`;
 
@@ -40,9 +45,9 @@ export class GroqProvider {
           model: this.model,
           temperature: 0,
           response_format: { type: "json_object" },
-          messages: [
+            messages: [
             { role: "system", content: system },
-            { role: "user", content: user + "\n\nResponde SOLO con JSON válido según: {transaction_type, amount, currency, merchant, category, date, account_hint, payment_method, installment, is_recurring_candidate, is_transfer_candidate, confidence, needs_review, reason}" }
+            { role: "user", content: user + "\n\nResponde SOLO con JSON válido según: {is_transaction, transaction_type, amount, currency, merchant, category, date, account_hint, payment_method, installment, is_recurring_candidate, is_transfer_candidate, confidence, needs_review, reason}" }
           ],
         }),
       });
@@ -61,6 +66,27 @@ export class GroqProvider {
   }
 
   private mock(input: AgentInput, reason: string): AgentOutput {
+    const rawLow = input.normalized_text.toLowerCase();
+    // Guard: promos / cupo / oferta sin consumo -> is_transaction=false con alta confianza
+    if (/(cupo.*aprobado|preaprobado|oferta|simula.*cr[eé]dito|tienes un nuevo cupo|solicita.*aqu[ií]|crédito aprobado)/.test(rawLow)) {
+      return {
+        is_transaction: false,
+        transaction_type: "none" as const,
+        amount: 0,
+        currency: "CLP",
+        merchant: "Desconocido",
+        category: "otros",
+        date: input.parser_hints.date ?? new Date().toISOString().slice(0, 10),
+        account_hint: null,
+        payment_method: "unknown",
+        installment: null,
+        is_recurring_candidate: false,
+        is_transfer_candidate: false,
+        confidence: 0.95,
+        needs_review: false,
+        reason: "promo_cupo_aprobado",
+      };
+    }
     const amount = input.parser_hints.amount ?? 0;
     // Heurística categoría por merchant (para demo sin API)
     const m = (input.parser_hints.merchant_guess ?? input.normalized_text).toLowerCase();
@@ -89,7 +115,8 @@ export class GroqProvider {
 
     const needs_review = amount === 0 || !merchant;
     return {
-      transaction_type: /transferencia/.test(m) ? "transfer" : "expense",
+      is_transaction: true,
+      transaction_type: /transferencia/.test(m) ? "transfer" : "expense" as const,
       amount: amount || 0,
       currency: "CLP",
       merchant: merchant ?? "Desconocido",

@@ -1,8 +1,9 @@
 import { z } from "zod";
 
 export const AgentOutputSchema = z.object({
-  transaction_type: z.enum(["expense","income","transfer"]),
-  amount: z.number().int().positive(),
+  is_transaction: z.boolean().default(true),
+  transaction_type: z.enum(["expense","income","transfer","none"]),
+  amount: z.number().int().nonnegative(),
   currency: z.string().default("CLP"),
   merchant: z.string(),
   category: z.string(),

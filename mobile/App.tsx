@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, AppState } from "react-native";
 import { C } from "./src/theme/tokens";
 import { MIcon } from "./src/components/ui/MIcon";
 import { Sheet } from "./src/components/ui/Sheet";
@@ -8,7 +8,7 @@ import { BalanceHero } from "./src/components/ui/BalanceHero";
 import { AddMoveModal } from "./src/components/ui/AddMoveModal";
 import { FabMenu } from "./src/components/ui/FabMenu";
 import { IASheet } from "./src/components/ui/IASheet";
-import { hasPermission, startListening, setApiUrl, flushQueue } from "./src/native/NotificationListener";
+import { hasPermission, startListening, setApiUrl, flushQueue, resendActive } from "./src/native/NotificationListener";
 import { API_URL } from "./src/lib/supabase";
 import { useShellData } from "./src/lib/useShellData";
 import { Categorias } from "./src/screens/Categorias";
@@ -61,6 +61,20 @@ export default function App() {
       stop = startListening(() => reloadRef.current());
     }).catch(() => {});
     return () => { try { stop?.(); } catch {} };
+  }, []);
+
+  // Reintento automático al volver al primer plano y cada 30s (captura notis que llegaron con app en background)
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", state => {
+      if (state === "active") {
+        resendActive().then(() => reloadRef.current()).catch(() => {});
+        flushQueue().catch(() => {});
+      }
+    });
+    const id = setInterval(() => {
+      resendActive().catch(() => {});
+    }, 30000);
+    return () => { sub.remove(); clearInterval(id as any); };
   }, []);
 
   function onSelectCategory(cat: { id: string; label: string; slug: string }) {

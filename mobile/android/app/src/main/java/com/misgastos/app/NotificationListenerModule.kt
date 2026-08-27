@@ -55,7 +55,29 @@ class NotificationListenerModule(private val reactCtx: ReactApplicationContext) 
 
   @ReactMethod
   fun setApiUrl(url: String) {
-    NotificationListener.apiUrl = url
+    NotificationListener.saveApiUrl(reactCtx, url)
+  }
+
+  @ReactMethod
+  fun postTestNotification(title: String, text: String, promise: Promise) {
+    try {
+      val nm = reactCtx.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+      val channelId = "misgastos-test"
+      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+        val ch = android.app.NotificationChannel(channelId, "Pruebas MisGastos", android.app.NotificationManager.IMPORTANCE_HIGH)
+        nm.createNotificationChannel(ch)
+      }
+      val notif = androidx.core.app.NotificationCompat.Builder(reactCtx, channelId)
+        .setContentTitle(title)
+        .setContentText(text)
+        .setSmallIcon(android.R.drawable.ic_dialog_info)
+        .setAutoCancel(true)
+        .build()
+      nm.notify(9199, notif)
+      promise.resolve(null)
+    } catch (e: Exception) {
+      promise.reject("ERR", e.message ?: "post failed")
+    }
   }
 
   @ReactMethod

@@ -12,14 +12,17 @@ try {
   NativeModule = require("react-native").NativeModules?.NotificationListener;
 } catch {}
 
-// Match por prefijo de paquete (exacto o sub-app). Añade el paquete del banco/comercio que quieras capturar.
-// p.ej. "cl.bancochile" matchea "cl.bancochile.mi_banco". No uses "último segmento" (demasiado genérico).
+// Sincronizado con mobile/src/native/allowlist.json y backend/src/modules/ingestion/allowlist.ts
 const ALLOWLIST = [
   "cl.android", "com.falabella.falabellaApp", "com.mercadopago.wallet",
   "cl.bancochile", "cl.bci", "cl.santander", "cl.bancoestado",
+  "cl.scotiabank", "cl.itau",
   "com.google.android.apps.walletnfcrel", "com.google.android.apps.nbu.paisa",
-  "com.mach", "com.tenpo",
+  "com.google.android.gms",
+  "com.mach", "com.tenpo", "cl.tenpo",
 ];
+// En debug permitimos nuestras propias notificaciones de prueba
+const DEBUG_ALLOW = ["com.misgastos.app"];
 
 export type BankNotification = {
   packageName: string;
@@ -51,7 +54,8 @@ export function startListening(onNotification: (n: BankNotification) => void): (
   try {
     const Emitter = new NativeEventEmitter(NativeModule);
     const sub = Emitter.addListener("onNotificationPosted", (n: BankNotification) => {
-      if (!ALLOWLIST.some(pkg => n.packageName.startsWith(pkg))) return;
+      const isSelf = n.packageName === "com.misgastos.app" && n.title.includes("Test");
+      if (!isSelf && !ALLOWLIST.some(pkg => n.packageName.startsWith(pkg)) && !DEBUG_ALLOW.some(pkg => n.packageName.startsWith(pkg) && n.title.includes("Test"))) return;
       onNotification(n);
     });
     // compatibilidad: algunos builds exponen addListener directo en el módulo
@@ -117,6 +121,11 @@ export async function flushQueue(): Promise<number> {
 export async function resendActive(): Promise<void> {
   if (Platform.OS !== "android" || !NativeModule?.resendActive) return;
   try { await NativeModule.resendActive(); } catch {}
+}
+
+export async function postTestNotificationVisible(title: string, text: string): Promise<void> {
+  if (Platform.OS !== "android" || !NativeModule?.postTestNotification) return;
+  try { await NativeModule.postTestNotification(title, text); } catch {}
 }
 
 // Mock para probar en web/Expo Go sin banco real

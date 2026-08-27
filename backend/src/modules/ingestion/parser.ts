@@ -17,13 +17,17 @@ export type Parsed = {
 
 const BANKS = ["BancoEstado", "BCI", "Santander", "Itaú", "Scotiabank", "Banco de Chile", "Falabella", "Ripley", "Tenpo", "Mach"];
 
-// $32.990, $45.000, $45000, $ 250.000, $600.000, $1.000.000 — CLP sin decimales
+// $32.990, $45.000, $45000, CLP1,250, CLP 1.300 — CLP sin decimales
 function extractAmount(text: string): number | null {
-  // Prioridad: con puntos (requiere al menos un punto) -> sin puntos (plain). Evita que $45000 se capture como 450
-  const m = text.match(/(?:\$|monto:?|importe:?)\s*([0-9]{1,3}(?:\.[0-9]{3})+(?:,[0-9]{2})?|[0-9]{4,7}(?:,[0-9]{2})?)/i)
-    ?? text.match(/(?:\$|monto:?|importe:?)\s*([0-9]+)/i);
+  // Prioridad: con separadores -> plain. Soporta $ / CLP / monto / importe. CLP con coma miles chilena (1,250)
+  const m = text.match(/(?:\$|CLP\s*|monto:?|importe:?)\s*([0-9]{1,3}(?:[.,][0-9]{3})+(?:,[0-9]{2})?|[0-9]{4,7}(?:,[0-9]{2})?)/i)
+    ?? text.match(/(?:\$|CLP\s*|monto:?|importe:?)\s*([0-9]+)/i);
   if (!m) return null;
-  const raw = m[1].replace(/\./g, "").replace(/,[0-9]{2}$/, "");
+  // Normaliza miles: quita . y , aisladas de miles; preserva ,xx decimales solo si es cola decimal
+  let raw = m[1];
+  // Si es formato 1,250 (coma miles 3 dígitos, sin decimales de 2), quitar comas
+  if (/^[0-9]{1,3}(?:,[0-9]{3})+$/.test(raw)) raw = raw.replace(/,/g, "");
+  else raw = raw.replace(/\./g, "").replace(/,[0-9]{2}$/, "").replace(/,/g, "");
   const n = parseInt(raw, 10);
   return Number.isFinite(n) && n > 0 ? n : null;
 }

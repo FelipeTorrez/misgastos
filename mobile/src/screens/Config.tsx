@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Switch, Alert } f
 import { API_URL } from "../lib/supabase";
 import { C, R } from "../theme/tokens";
 import { Card } from "../components/ui/Card";
-import { hasPermission, requestPermission, simulateBankNotification, resendActive } from "../native/NotificationListener";
+import { hasPermission, requestPermission, simulateBankNotification, resendActive, postTestNotificationVisible } from "../native/NotificationListener";
 
 export function Config({ devMode, setDevMode, onNavigate, onReload }: { devMode: boolean; setDevMode: (v: boolean) => void; onNavigate?: (key: string) => void; onReload?: () => void }) {
   const [health, setHealth] = useState<any>(null);
@@ -111,6 +111,7 @@ export function Config({ devMode, setDevMode, onNavigate, onReload }: { devMode:
           <TouchableOpacity style={s.devBtn} onPress={() => sim("Compra por $45.200 en Jumbo - 26/08/2026 16:00")}><Text style={s.devBtnText}>Simular Jumbo $45.200</Text></TouchableOpacity>
           <TouchableOpacity style={s.devBtn} onPress={() => sim("Tu suscripción Spotify se renovó $7.490 - 26/08/2026 09:00")}><Text style={s.devBtnText}>Simular Spotify $7.490</Text></TouchableOpacity>
           <TouchableOpacity style={[s.devBtn, { borderColor: C.primary }]} onPress={async () => { await resendActive(); setSimMsg("Reenviando notificaciones en pantalla…"); setTimeout(() => setSimMsg(null), 3000); setTimeout(() => onReload?.(), 800); }}><Text style={s.devBtnText}>Reenviar notificaciones en pantalla</Text></TouchableOpacity>
+          <TouchableOpacity style={[s.devBtn, { backgroundColor: C.primarySoft, borderColor: C.primary }]} onPress={async () => { await postTestNotificationVisible("Compra Test Visible", `Compra por $12.300 en Test Visible - ${new Date().toLocaleDateString("es-CL")} 12:00`); setSimMsg("Notificación visible disparada — revisa la bandeja"); setTimeout(() => setSimMsg(null), 3000); }}><Text style={[s.devBtnText, { color: C.primary }]}>Disparar notificación visible Test</Text></TouchableOpacity>
           {simMsg && <Text style={[s.muted, { color: C.positive, marginTop: 4 }]}>{simMsg}</Text>}
           <Text style={[s.muted, { fontSize: 11 }]}>Cada simulación hace POST /v1/ingestion/notification → parser §14 → AI → dedup §15. Verifica en Movimientos.</Text>
         </View>
