@@ -3,9 +3,11 @@ import { z } from "zod";
 export const AgentOutputSchema = z.object({
   is_transaction: z.boolean().default(true),
   transaction_type: z.enum(["expense","income","transfer","none"]),
+  direction: z.enum(["in","out","internal","none"]).default("out"),
   amount: z.number().int().nonnegative(),
   currency: z.string().default("CLP"),
   merchant: z.string(),
+  counterparty: z.string().nullable().default(null),
   category: z.string(),
   date: z.string(), // YYYY-MM-DD
   account_hint: z.string().nullable(),

@@ -1,4 +1,5 @@
 import { AgentOutput, AgentInput, AgentOutputSchema } from "./AIProvider.js";
+import { FINAN_SYSTEM_PROMPT, inferDirection } from "../prompts/agente-financiero.js";
 
 // Groq via OpenAI-compatible API con structured outputs (JSON Schema)
 // Docs: https://console.groq.com/docs/text-chat#json-mode
@@ -14,19 +15,7 @@ export class GroqProvider {
       ? `Reglas usuario (prioridad): ${input.user_rules.map(r => `${r.merchant}→${r.preferred_category}`).join("; ")}`
       : "Sin reglas";
 
-    const system = `Eres Transaction Intelligence + Guard (Agente #1). Convierte texto financiero chileno no estructurado en JSON ESTRICTO según schema.
-DECISIÓN PRIMARIA — is_transaction:
-- is_transaction=true SOLO si el texto describe movimiento REAL de dinero (compra/pago/giro/retiro/transferencia/abono/depósito) con monto ejecutado y comercio/cuenta.
-- is_transaction=false si es oferta/promo/cupo aprobado/preaprobado/simulación/recordatorio informativo/publicidad/alerta sin consumo ("tienes un nuevo cupo aprobado por 750.000", "simula tu crédito", "oferta"). En ese caso pon transaction_type="none", amount=0, needs_review=false, confidence 0.95, reason="promo_cupo_aprobado".
-- Si is_transaction=false, ignora amount aunque exista en texto.
-REGLAS CUANDO is_transaction=true:
-- Usa parser_hints si son confiables, pero corrige si el texto contradice.
-- merchant: UNA sola marca en Title Case (ej "Jumbo", "Lider", "Spotify"). Solo el nombre del comercio, sin preposiciones ("en","on","de","por"), sin sufijos. Máx 2 palabras.
-- category: elige SOLO de [${categories}] (usa "otros" si dudas). transaction_type expense|income|transfer.
-- amount: CLP entero sin puntos, debe coincidir con texto o hints. CLP1,250 = 1250, $1.300 = 1300.
-- Si amount es null o no hay monto claro, pon is_transaction=false si es informativo, o confidence 0.4 y needs_review true si dudoso.
-- Respeta reglas usuario si merchant coincide.
-- No inventes datos. JSON solo.`;
+    const system = FINAN_SYSTEM_PROMPT.replace("[CATEGORIES]", categories);
 
     const user = JSON.stringify({
       normalized_text: input.normalized_text.slice(0, 500),
@@ -47,7 +36,7 @@ REGLAS CUANDO is_transaction=true:
           response_format: { type: "json_object" },
             messages: [
             { role: "system", content: system },
-            { role: "user", content: user + "\n\nResponde SOLO con JSON válido según: {is_transaction, transaction_type, amount, currency, merchant, category, date, account_hint, payment_method, installment, is_recurring_candidate, is_transfer_candidate, confidence, needs_review, reason}" }
+            { role: "user", content: user + "\n\nResponde SOLO con JSON válido según: {is_transaction, transaction_type, direction, amount, currency, merchant, counterparty, category, date, account_hint, payment_method, installment, is_recurring_candidate, is_transfer_candidate, confidence, needs_review, reason}" }
           ],
         }),
       });
@@ -65,16 +54,18 @@ REGLAS CUANDO is_transaction=true:
     }
   }
 
-  private mock(input: AgentInput, reason: string): AgentOutput {
+  private mock(input: AgentInput, fallbackReason: string): AgentOutput {
     const rawLow = input.normalized_text.toLowerCase();
     // Guard: promos / cupo / oferta sin consumo -> is_transaction=false con alta confianza
     if (/(cupo.*aprobado|preaprobado|oferta|simula.*cr[eé]dito|tienes un nuevo cupo|solicita.*aqu[ií]|crédito aprobado)/.test(rawLow)) {
       return {
         is_transaction: false,
         transaction_type: "none" as const,
+        direction: "none" as const,
         amount: 0,
         currency: "CLP",
         merchant: "Desconocido",
+        counterparty: null,
         category: "otros",
         date: input.parser_hints.date ?? new Date().toISOString().slice(0, 10),
         account_hint: null,
@@ -84,7 +75,7 @@ REGLAS CUANDO is_transaction=true:
         is_transfer_candidate: false,
         confidence: 0.95,
         needs_review: false,
-        reason: "promo_cupo_aprobado",
+        reason: "Mensaje promocional o informativo, no hay consumo",
       };
     }
     const amount = input.parser_hints.amount ?? 0;
@@ -113,23 +104,78 @@ REGLAS CUANDO is_transaction=true:
       }
     }
 
-    const needs_review = amount === 0 || !merchant;
+    // Dirección financiera (SDD §7): Finan decide in/out/internal, no solo /transferencia/
+    const direction = inferDirection(input.normalized_text);
+    let transaction_type: "expense" | "income" | "transfer" = "expense";
+    let counterparty: string | null = null;
+    let payment_method: AgentOutput["payment_method"] = "unknown";
+    if (direction === "in") {
+      transaction_type = "income";
+      payment_method = "transfer";
+      // counterparty: buscar "de <Nombre>" tras señal entrante
+      const cp = input.normalized_text.match(/de\s+([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+){0,2})/i);
+      if (cp) {
+        const cand = cp[1].trim().split(/\s+/).slice(0, 3).join(" ");
+        if (cand.length >= 3 && !/cuenta|banco|falabella|bci|santander/i.test(cand)) counterparty = cand.split(" ").map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(" ");
+      }
+      if (!merchant || merchant === "Desconocido") merchant = "Transferencia";
+    } else if (direction === "internal") {
+      transaction_type = "transfer";
+      payment_method = "transfer";
+      if (!merchant || merchant === "Desconocido") merchant = "Transferencia";
+    } else {
+      // out: compra/gasto o transferencia enviada
+      const isTransferOut = /(transferiste|enviaste|transferencia (realizada|enviada))/.test(rawLow);
+      if (isTransferOut) {
+        payment_method = "transfer";
+        if (!merchant || merchant === "Desconocido") merchant = "Transferencia";
+        const cp = input.normalized_text.match(/a\s+([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+){0,2})/i);
+        if (cp) {
+          const cand = cp[1].trim().split(/\s+/).slice(0, 3).join(" ");
+          if (cand.length >= 3 && !/cuenta|banco/i.test(cand)) counterparty = cand.split(" ").map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(" ");
+        }
+      } else {
+        payment_method = rawLow.includes("cmr") || rawLow.includes("mastercard") || rawLow.includes("visa") ? "credit_card" : "unknown";
+      }
+    }
+
+    const isTransferCandidate = direction !== "out" || /(transferencia|transfirieron|transferiste|enviaste)/.test(rawLow);
+    const needs_review = amount === 0 || (!merchant || merchant === "Desconocido" && !counterparty);
+    let verdictReason: string;
+    if (direction === "in") verdictReason = counterparty ? `Transferencia recibida de ${counterparty} → ingreso` : "Transferencia recibida → ingreso";
+    else if (direction === "internal") verdictReason = "Traspaso entre cuentas propias → transferencia";
+    else if (isTransferCandidate && transaction_type === "expense") {
+      verdictReason = counterparty ? `Transferencia enviada a ${counterparty} → gasto` : "Transferencia enviada → gasto";
+      // si es compra normal, sobrescribir
+      if (!/(transferiste|enviaste)/.test(rawLow)) {
+        verdictReason = rawLow.includes("compra") || rawLow.includes("pagaste") ? "Compra con tarjeta → gasto" : verdictReason;
+      }
+    } else verdictReason = rawLow.includes("compra") ? "Compra con tarjeta → gasto" : "Gasto → pendiente revisión";
+
     return {
       is_transaction: true,
-      transaction_type: /transferencia/.test(m) ? "transfer" : "expense" as const,
+      transaction_type,
+      direction,
       amount: amount || 0,
       currency: "CLP",
       merchant: merchant ?? "Desconocido",
+      counterparty,
       category,
       date: input.parser_hints.date ?? new Date().toISOString().slice(0, 10),
       account_hint: null,
-      payment_method: "unknown",
+      payment_method,
       installment: null,
       is_recurring_candidate: /spotify|netflix|chatgpt/.test(m),
-      is_transfer_candidate: /transferencia/.test(m),
+      is_transfer_candidate: isTransferCandidate,
       confidence: needs_review ? 0.5 : 0.88,
       needs_review,
-      reason: reason.slice(0, 200),
+      reason: verdictReason.slice(0, 200),
     };
   }
+
+  // Hook para tests y métrica
+  public static inferDirection = inferDirection;
+
+  // Export para tests unitarios sin instanciar
+  public __test__ = { inferDirection };
 }

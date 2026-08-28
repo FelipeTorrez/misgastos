@@ -64,14 +64,15 @@ describe("Phase 3 — Ingestion Email §11.1 → RawEvent §12 → Parser §14",
     expect(j.parsed.confidence).toBe(0.5);
   });
 
-  it("transferencia recibida $250k", async ()=>{
+  it("transferencia recibida $250k → income (Finan: entra)", async ()=>{
     const res = await app.inject({ method:"POST", url:"/v1/ingestion/email", payload:{
       raw_content:"Transferencia recibida Monto: $250.000 - 06/08/2026 - BancoEstado", external_id:"tr-1"
     }});
     const j = JSON.parse(res.body);
     expect(j.parsed.operation).toBe("transfer");
     expect(j.parsed.amount).toBe(250000);
-    expect(j.transaction.type).toBe("transfer");
+    expect(j.transaction.type).toBe("income");
+    expect(j.ai.direction).toBe("in");
   });
 
   it("GET /v1/raw-events lista auditoría", async ()=>{

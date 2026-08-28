@@ -5,6 +5,7 @@ import { parseEmail, normalizeForAI } from "./parser.js";
 import { isDuplicate } from "./dedup.js";
 import { mockStore } from "../../lib/mockStore.js";
 import { allowlistHit } from "./allowlist.js";
+import { inferDirection } from "../../ai/prompts/agente-financiero.js";
 
 function toTitleCase(s: string): string {
   return s.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
@@ -73,6 +74,8 @@ async function processIngestion(data: any, userId: string) {
   let finalMerchant = p.merchant ?? (p.operation === "transfer" ? "Transferencia" : "Desconocido");
   let finalCategorySlugOrId: string | null = null;
   let finalCategoryId: string | null = null;
+  let finalDirection: string | null = null;
+  let finalCounterparty: string | null = null;
   let aiConfidence = p.confidence;
   let aiNeedsReview = p.confidence < 0.6;
   let classificationSource: string = "parser";
@@ -169,13 +172,22 @@ async function processIngestion(data: any, userId: string) {
     aiConfidence = 1.0;
     aiNeedsReview = false;
     classificationSource = "rule";
+    // Si hay regla, inferir dirección desde AI si existe, si no desde texto
+    if (ai?.direction) { finalDirection = ai.direction; finalCounterparty = ai.counterparty ?? null; }
+    else { finalDirection = inferDirection(normalized); }
     await incrementHits(matchedRule);
   } else if (ai) {
     if (ai.merchant) finalMerchant = ai.merchant;
     if (ai.category) finalCategorySlugOrId = ai.category;
+    if (ai.direction) finalDirection = ai.direction;
+    if (ai.counterparty) finalCounterparty = ai.counterparty;
     aiConfidence = ai.confidence ?? p.confidence;
     aiNeedsReview = ai.needs_review ?? (p.confidence < 0.6);
     classificationSource = "ai";
+  }
+  // Fallback dirección si aún no seteada y hay monto (parser sin IA o regla sin AI)
+  if (!finalDirection && p.amount !== null) {
+    finalDirection = inferDirection(normalized);
   }
 
   // Normaliza merchant para display
@@ -197,7 +209,7 @@ async function processIngestion(data: any, userId: string) {
   let dedupFound: any = null;
   if (p.amount !== null) {
     const effectiveDate = p.date ?? new Date().toISOString().slice(0, 10);
-    const type = (ai?.transaction_type as any) ?? (p.operation === "transfer" ? "transfer" : "expense");
+    const type = (ai?.transaction_type as any) ?? (finalDirection === "in" ? "income" : finalDirection === "internal" ? "transfer" : p.operation === "transfer" ? "transfer" : "expense");
     if (type !== "none") {
       const candidate = { amount: p.amount, date: effectiveDate, time: p.time, merchant: finalMerchant, type };
       let recentTxs: any[];
@@ -215,7 +227,7 @@ async function processIngestion(data: any, userId: string) {
   // Transaction — solo si guard pasó y hay monto
   let transaction: any = null;
   if (p.amount !== null && !(ai && ai.is_transaction === false)) {
-    const type = (ai?.transaction_type as any) ?? (p.operation === "transfer" ? "transfer" : "expense");
+    const type = (ai?.transaction_type as any) ?? (finalDirection === "in" ? "income" : finalDirection === "internal" ? "transfer" : p.operation === "transfer" ? "transfer" : "expense");
     if (type === "none") {
       return {
         status: 200,
@@ -227,14 +239,18 @@ async function processIngestion(data: any, userId: string) {
     else if (classificationSource === "rule") status = "pending_ai";
     else status = aiNeedsReview ? "pending_review" : "pending_ai";
 
+    // Resolver payment_method desde AI o fallback
+    const paymentMethod = (ai?.payment_method as any) ?? (p.last4 ? "credit_card" as const : "unknown" as const);
+    const direction = (ai?.direction as any) ?? finalDirection ?? (type === "income" ? "in" : type === "transfer" ? "internal" : "out");
     const payload: any = {
       user_id: userId, raw_event_id: rawEventId, merchant: finalMerchant,
       amount: p.amount, currency: p.currency ?? "CLP", type,
       category_id: finalCategoryId,
-      payment_method: p.last4 ? "credit_card" : "unknown",
+      direction, counterparty: finalCounterparty ?? ai?.counterparty ?? null,
+      payment_method: paymentMethod,
       date: p.date ? `${p.date}T${p.time ?? "12:00"}:00Z` : new Date().toISOString(),
       status, confidence: aiConfidence,
-      is_recurring_candidate: false, duplicate_of: duplicateOf,
+      is_recurring_candidate: ai?.is_recurring_candidate ?? false, duplicate_of: duplicateOf,
       source: classificationSource,
     };
 

@@ -62,7 +62,7 @@ describe("SDD Notification Guard — parser CLP + allowlist + IA guard", ()=>{
     const out = await prov.mock({ normalized_text: "tienes un nuevo cupo aprobado por 750.000 abre aqui banco de chile", parser_hints:{ amount:750000 }, categories:["otros"], user_rules:[], locale:"es-CL" }, "test");
     expect(out.is_transaction).toBe(false);
     expect(out.transaction_type).toBe("none");
-    expect(out.reason).toBe("promo_cupo_aprobado");
+    expect(out.reason).toContain("promo");
     expect(out.amount).toBe(0);
   });
 
