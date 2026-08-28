@@ -1,7 +1,7 @@
 # HANDOFF — Contexto completo para continuar desarrollo
 
-> Última actualización: 2026-08-27 (tarde) — **Notification Guard (IA) + Allowlist v2 + Parser CLP** ✅ — `134/134` tests (9 nuevos guard), `spec/sdd-notification-guard.md` aplicado. Build release con `EXPO_PUBLIC_API_URL=https://misgastos-production-b8c6.up.railway.app` (fuera de LAN) y `GROQ_MODEL=qwen/qwen3.8-27b`.
-> Siguiente: **Rebuild APK (allowlist gms) + deploy Railway + re-probar Wallet gms + Phase 9 Advisor**. Ver §6 y `spec/roadmap.md`.
+> Última actualización: 2026-08-28 (noche) — **Agente Financiero Finan (SDD) + direction in/out/internal** ✅ — `149/149` tests (15 nuevos Finan), `spec/sdd-agente-financiero.md` aplicado, migración `004_add_transaction_direction.sql` en Supabase, deploy Railway `650061ee` (fix puerto `8080→3000`), APK release instalada. Health `0.4.0-finan`. Ver §6 y `spec/roadmap.md`.
+> Siguiente: **Re-probar transferencia recibida $21.700 → income en prod + Phase 9 Advisor (tools) + limpieza fixtures agosto**. Ver §6 y `spec/roadmap.md`.
 
 > ⚠️ Cambió la arquitectura de navegación: ahora hay un **shell persistente** (mes + balance hero + sub-tabs anidados + FAB global). Detalle abajo en §6.
 
