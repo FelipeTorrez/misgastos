@@ -11,12 +11,14 @@ Nunca inventes datos que el texto no diga.
 
 PASO 1 — ¿Es una transacción real? (is_transaction)
 - true  → hubo movimiento REAL de dinero (compra, pago, giro, retiro, transferencia,
-          abono, depósito, sueldo, devolución) con monto ejecutado.
-- false → oferta, promo, cupo aprobado/preaprobado, simulación, recordatorio, publicidad
-          o alerta informativa SIN consumo. Entonces: transaction_type="none",
-          direction="none", amount=0, needs_review=false, confidence=0.95,
-          reason="Mensaje promocional o informativo, no hay consumo".
-- Si es false, ignora cualquier monto que aparezca en el texto.
+           abono, depósito, sueldo, devolución) con monto ejecutado y verbo de movimiento ("compraste", "pagaste", "te transfirieron", "transferiste").
+- false → oferta, promo, cupo aprobado/preaprobado, simulación, recordatorio, publicidad,
+           cuotas sin interés, permiso de circulación, "últimos días", "días baratísimos",
+           "doble acumulación" o alerta informativa SIN consumo. Entonces: transaction_type="none",
+           direction="none", amount=0, needs_review=false, confidence=0.95,
+           reason="Mensaje promocional o informativo, no hay consumo".
+- Si es false, ignora cualquier monto o número que aparezca (ej "3 o 6 cuotas" NO es $3).
+- Señales promo: "paga tu permiso en 3 o 6 cuotas", "últimos días", "cuotas sin interés", "días baratísimos", "continúan los mejores dtos".
 
 PASO 2 — Dirección del dinero (direction): el campo que define el signo.
 - "in"  (entra): recibiste / te transfirieron / te han transferido / abono / depósito /
@@ -77,11 +79,21 @@ Ejemplos (few-shot):
       "payment_method":"credit_card","needs_review":false,"confidence":0.9,
       "reason":"Compra con tarjeta → gasto"}
 5) "tienes un nuevo cupo aprobado por $750.000"
-   → {"is_transaction":false,"transaction_type":"none","direction":"none","amount":0,
-      "merchant":"Desconocido","counterparty":null,"category":"otros",
-      "payment_method":"unknown","needs_review":false,"confidence":0.95,
-      "reason":"Mensaje promocional o informativo, no hay consumo"}
-`;
+    → {"is_transaction":false,"transaction_type":"none","direction":"none","amount":0,
+       "merchant":"Desconocido","counterparty":null,"category":"otros",
+       "payment_method":"unknown","needs_review":false,"confidence":0.95,
+       "reason":"Mensaje promocional o informativo, no hay consumo"}
+6) "¡Últimos días! Paga tu Permiso de Circulación en 3 o 6 cuotas sin interés y obtén doble acumulación"
+    → {"is_transaction":false,"transaction_type":"none","direction":"none","amount":0,
+       "merchant":"Desconocido","counterparty":null,"category":"otros",
+       "payment_method":"unknown","needs_review":false,"confidence":0.95,
+       "reason":"Mensaje promocional o informativo, no hay consumo"}
+7) "Días Baratísimos: Continúan los mejores dtos. en Travel Tienda Encuentra miles de productos"
+    → {"is_transaction":false,"transaction_type":"none","direction":"none","amount":0,
+       "merchant":"Desconocido","counterparty":null,"category":"otros",
+       "payment_method":"unknown","needs_review":false,"confidence":0.95,
+       "reason":"Mensaje promocional o informativo, no hay consumo"}
+ `;
 
 // Señales para inferencia determinista (usadas por mock y métrica de tests)
 export const DIRECTION_SIGNALS = {

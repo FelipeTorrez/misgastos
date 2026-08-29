@@ -57,7 +57,11 @@ export class GroqProvider {
   private mock(input: AgentInput, fallbackReason: string): AgentOutput {
     const rawLow = input.normalized_text.toLowerCase();
     // Guard: promos / cupo / oferta sin consumo -> is_transaction=false con alta confianza
-    if (/(cupo.*aprobado|preaprobado|oferta|simula.*cr[eé]dito|tienes un nuevo cupo|solicita.*aqu[ií]|crédito aprobado)/.test(rawLow)) {
+    // Incluye patrones de marketing bancario chileno: cuotas sin interés, permiso circulación, días baratísimos
+    // No bloquear si hay verbo de consumo real (compra/pagaste) con monto → es compra en cuotas legítima
+    const hasRealConsumptionVerb = /(compra|compraste|pagaste|consumo|te han transferido|recibiste|transferiste|enviaste|giro|cajero|retiro)/i.test(rawLow);
+    const isPromoPattern = /(cupo.*aprobado|preaprobado|oferta|simula.*cr[eé]dito|tienes un nuevo cupo|solicita.*aqu[ií]|crédito aprobado|últimos días|permiso de circulación|d[ií]as barat[ií]simos|doble acum|continúan los mejores|encuentra miles de productos|paga tu.*cuotas|\b3\s*o\s*6\s*cuotas\b|cuotas sin interés)/i.test(rawLow);
+    if (isPromoPattern && !hasRealConsumptionVerb) {
       return {
         is_transaction: false,
         transaction_type: "none" as const,

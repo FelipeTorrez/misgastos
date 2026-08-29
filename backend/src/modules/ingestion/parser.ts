@@ -66,10 +66,31 @@ function extractLast4(text: string): string | null {
 
 function extractMerchant(text: string): string | null {
   // "en Lider", "comercio: Jumbo" — captura 1-2 palabras, corta antes de stopwords
-  const stop = new Set(["con", "tarjeta", "terminada", "en", "de", "la", "el", "por", "para", "del", "los", "las", "un", "una", "su", "on", "a", "al"]);
+  const stop = new Set(["con", "tarjeta", "terminada", "en", "de", "la", "el", "por", "para", "del", "los", "las", "un", "una", "su", "on", "a", "al", "o", "y"]);
+  // Patrón promo "en 3 o 6 cuotas" no es comercio — debe ignorarse
+  const isCuotasPromo = (s: string) => /^\d+(\s+o(\s+\d+)?)?$/i.test(s.trim()) || /cuotas/i.test(s);
+  const isNumericNoise = (words: string[]) => words.length > 0 && words.every(w => /^\d+$/.test(w) || w.length === 1);
   let m = text.match(/\ben\s+([A-Za-zÁÉÍÓÚÑa-záéíóúñ0-9]+(?:\s+[A-Za-z0-9ÁÉÍÓÚÑa-záéíóúñ]+)?)/i);
   if (m) {
-    const words = m[1].trim().split(/\s+/).filter(w => !stop.has(w.toLowerCase()));
+    const cand = m[1].trim();
+    if (isCuotasPromo(cand)) {
+      // Buscar siguiente "en <comercio>" que no sea promo numérica
+      const rest = text.slice((m.index ?? 0) + m[0].length);
+      const m2 = rest.match(/\ben\s+([A-Za-zÁÉÍÓÚÑa-záéíóúñ0-9]+(?:\s+[A-Za-z0-9ÁÉÍÓÚÑa-záéíóúñ]+)?)/i);
+      if (m2) {
+        const cand2 = m2[1].trim();
+        if (!isCuotasPromo(cand2)) {
+          const words2 = cand2.split(/\s+/).filter(w => !stop.has(w.toLowerCase()));
+          if (words2.length && !isNumericNoise(words2)) return words2.slice(0, 2).join(" ");
+        }
+      }
+      // fallback a "comercio:"
+      const cm = text.match(/comercio:?\s*([A-Za-z0-9 ]{3,30})/i);
+      if (cm) return cm[1].trim().split(/\s+/).slice(0,2).join(" ");
+      return null;
+    }
+    const words = cand.split(/\s+/).filter(w => !stop.has(w.toLowerCase()));
+    if (words.length && isNumericNoise(words)) return null;
     if (words.length) return words.slice(0, 2).join(" ");
   }
   m = text.match(/comercio:?\s*([A-Za-z0-9 ]{3,30})/i);
