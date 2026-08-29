@@ -1,7 +1,7 @@
 /**
  * Dataset 100 transacciones — Phase 2
  * Distribución realista Chile Agosto 2026
- * Categorías: vivienda, alimentación, supermercado, transporte, salud, educación, entretenimiento, restaurantes, compras, suscripciones, deudas, servicios, transferencias, otros
+ * Categorías: vivienda, alimentación, alimentacion, transporte, salud, educación, entretenimiento, restaurantes, compras, suscripciones, deudas, servicios, transferencias, otros
  * Objetivo: validar UX y reglas financieras sin IA
  */
 
@@ -23,19 +23,19 @@ export const dataset100: FixtureTx[] = [
   { merchant: "Devolución SII", amount: 120000, category_slug: "otros", type: "income", date: "2026-08-12", payment_method: "transfer", account_type: "checking" },
   { merchant: "Venta Marketplace", amount: 85000, category_slug: "otros", type: "income", date: "2026-08-18", payment_method: "transfer", account_type: "vista" },
 
-  // Supermercado (12)
-  { merchant: "Lider", amount: 32990, category_slug: "supermercado", type: "expense", date: "2026-08-02", payment_method: "debit_card", account_type: "checking" },
-  { merchant: "Jumbo", amount: 45200, category_slug: "supermercado", type: "expense", date: "2026-08-03", payment_method: "debit_card", account_type: "checking" },
-  { merchant: "Santa Isabel", amount: 28750, category_slug: "supermercado", type: "expense", date: "2026-08-04", payment_method: "debit_card", account_type: "vista" },
-  { merchant: "Lider", amount: 18990, category_slug: "supermercado", type: "expense", date: "2026-08-09", payment_method: "credit_card", account_type: "credit_card" },
-  { merchant: "Unimarc", amount: 52300, category_slug: "supermercado", type: "expense", date: "2026-08-10", payment_method: "debit_card", account_type: "checking" },
-  { merchant: "Jumbo", amount: 31200, category_slug: "supermercado", type: "expense", date: "2026-08-15", payment_method: "debit_card", account_type: "checking" },
-  { merchant: "Lider", amount: 44500, category_slug: "supermercado", type: "expense", date: "2026-08-16", payment_method: "debit_card", account_type: "vista" },
-  { merchant: "Tottus", amount: 27800, category_slug: "supermercado", type: "expense", date: "2026-08-17", payment_method: "debit_card", account_type: "checking" },
-  { merchant: "Santa Isabel", amount: 19500, category_slug: "supermercado", type: "expense", date: "2026-08-20", payment_method: "cash", account_type: "cash" },
-  { merchant: "Lider", amount: 38900, category_slug: "supermercado", type: "expense", date: "2026-08-22", payment_method: "credit_card", account_type: "credit_card" },
-  { merchant: "Jumbo", amount: 22100, category_slug: "supermercado", type: "expense", date: "2026-08-25", payment_method: "debit_card", account_type: "checking" },
-  { merchant: "Unimarc", amount: 41200, category_slug: "supermercado", type: "expense", date: "2026-08-28", payment_method: "debit_card", account_type: "vista" },
+  // Alimentación / Mercados (12)
+  { merchant: "Lider", amount: 32990, category_slug: "alimentacion", type: "expense", date: "2026-08-02", payment_method: "debit_card", account_type: "checking" },
+  { merchant: "Jumbo", amount: 45200, category_slug: "alimentacion", type: "expense", date: "2026-08-03", payment_method: "debit_card", account_type: "checking" },
+  { merchant: "Santa Isabel", amount: 28750, category_slug: "alimentacion", type: "expense", date: "2026-08-04", payment_method: "debit_card", account_type: "vista" },
+  { merchant: "Lider", amount: 18990, category_slug: "alimentacion", type: "expense", date: "2026-08-09", payment_method: "credit_card", account_type: "credit_card" },
+  { merchant: "Unimarc", amount: 52300, category_slug: "alimentacion", type: "expense", date: "2026-08-10", payment_method: "debit_card", account_type: "checking" },
+  { merchant: "Jumbo", amount: 31200, category_slug: "alimentacion", type: "expense", date: "2026-08-15", payment_method: "debit_card", account_type: "checking" },
+  { merchant: "Lider", amount: 44500, category_slug: "alimentacion", type: "expense", date: "2026-08-16", payment_method: "debit_card", account_type: "vista" },
+  { merchant: "Tottus", amount: 27800, category_slug: "alimentacion", type: "expense", date: "2026-08-17", payment_method: "debit_card", account_type: "checking" },
+  { merchant: "Santa Isabel", amount: 19500, category_slug: "alimentacion", type: "expense", date: "2026-08-20", payment_method: "cash", account_type: "cash" },
+  { merchant: "Lider", amount: 38900, category_slug: "alimentacion", type: "expense", date: "2026-08-22", payment_method: "credit_card", account_type: "credit_card" },
+  { merchant: "Jumbo", amount: 22100, category_slug: "alimentacion", type: "expense", date: "2026-08-25", payment_method: "debit_card", account_type: "checking" },
+  { merchant: "Unimarc", amount: 41200, category_slug: "alimentacion", type: "expense", date: "2026-08-28", payment_method: "debit_card", account_type: "vista" },
 
   // Transporte (10)
   { merchant: "Uber", amount: 8900, category_slug: "transporte", type: "expense", date: "2026-08-02", payment_method: "debit_card", account_type: "checking" },
@@ -127,8 +127,8 @@ export const dataset100: FixtureTx[] = [
   { merchant: "Panadería", amount: 6500, category_slug: "alimentación", type: "expense", date: "2026-08-13", payment_method: "cash", account_type: "cash" },
 
   // Extra 19 para llegar a 100 (Phase 2 completado)
-  { merchant: "Lider", amount: 25990, category_slug: "supermercado", type: "expense", date: "2026-08-26", payment_method: "debit_card", account_type: "checking" },
-  { merchant: "Jumbo", amount: 33400, category_slug: "supermercado", type: "expense", date: "2026-08-27", payment_method: "debit_card", account_type: "vista" },
+  { merchant: "Lider", amount: 25990, category_slug: "alimentacion", type: "expense", date: "2026-08-26", payment_method: "debit_card", account_type: "checking" },
+  { merchant: "Jumbo", amount: 33400, category_slug: "alimentacion", type: "expense", date: "2026-08-27", payment_method: "debit_card", account_type: "vista" },
   { merchant: "Uber", amount: 7800, category_slug: "transporte", type: "expense", date: "2026-08-27", payment_method: "debit_card", account_type: "checking" },
   { merchant: "Copec", amount: 28000, category_slug: "transporte", type: "expense", date: "2026-08-28", payment_method: "debit_card", account_type: "vista" },
   { merchant: "PedidosYa", amount: 13400, category_slug: "restaurantes", type: "expense", date: "2026-08-25", payment_method: "debit_card", account_type: "checking" },

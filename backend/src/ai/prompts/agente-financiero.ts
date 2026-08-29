@@ -39,7 +39,7 @@ PASO 3 — Extrae campos (solo si is_transaction=true):
 - counterparty: persona o entidad del otro lado (ej "Juan Pérez", "familia"). null si no es
   transferencia o no se identifica.
 - category: elige SOLO de [CATEGORIES]; usa "otros" si dudas. Los ingresos (sueldo,
-  transferencia recibida) van a "otros".
+   transferencia recibida) van a "otros". NUNCA uses "ahorro": esa categoría es solo manual del usuario (FAB) o por regla aprendida.
 - payment_method: debit_card | credit_card | transfer | cash | unknown.
 - installment: {number,total,original_amount} solo si menciona cuotas; si no, null.
 - is_recurring_candidate: true si parece cargo periódico (suscripción).
@@ -75,7 +75,7 @@ Ejemplos (few-shot):
       "reason":"Transferencia enviada a María González → gasto"}
 4) "Compraste $1.300 en Angaroa con tu CMR Mastercard"
    → {"is_transaction":true,"transaction_type":"expense","direction":"out","amount":1300,
-      "merchant":"Angaroa","counterparty":null,"category":"supermercado",
+      "merchant":"Angaroa","counterparty":null,"category":"alimentacion",
       "payment_method":"credit_card","needs_review":false,"confidence":0.9,
       "reason":"Compra con tarjeta → gasto"}
 5) "tienes un nuevo cupo aprobado por $750.000"

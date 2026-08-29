@@ -53,10 +53,10 @@ describe("Phase 2 — Dataset 100 validaciones financieras", () => {
     const pct = Math.round((spent / 1800000) * 100);
     expect(pct).toBeGreaterThan(100); // debe mostrar >100% y rojo
   });
-  it("supermercado 14 txs suma excede 350k — UX debe mostrar rojo", () => {
-    const spent = dataset100.filter(t=>t.category_slug==="supermercado" && t.type==="expense").reduce((s,t)=>s+t.amount,0);
+  it("alimentacion 14 txs suma excede 350k — UX debe mostrar rojo", () => {
+    const spent = dataset100.filter(t=>t.category_slug==="alimentacion" && t.type==="expense").reduce((s,t)=>s+t.amount,0);
     expect(spent).toBeGreaterThan(350000); // overspend intencional para validar barra roja
-    expect(dataset100.filter(t=>t.category_slug==="supermercado").length).toBe(14);
+    expect(dataset100.filter(t=>t.category_slug==="alimentacion").length).toBe(14);
   });
   it("suscripciones recurrentes detectables: 6 con mismo merchant cada mes", () => {
     const subs = dataset100.filter(t=>t.category_slug==="suscripciones");

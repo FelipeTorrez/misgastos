@@ -46,7 +46,7 @@ describe("#1 Unit — presupuestos global + categoría (ADR-004)", () => {
     { amount: 100000, category_id: null, type: "transfer" }, // debe ignorarse en spent
   ];
   it("global spent suma todos los expense (sin transfer)", () => expect(calcBudgetSpent(txs, null)).toBe(65000));
-  it("supermercado spent solo su categoría", () => expect(calcBudgetSpent(txs, CAT_SUPER)).toBe(50000));
+  it("alimentacion spent solo su categoría", () => expect(calcBudgetSpent(txs, CAT_SUPER)).toBe(50000));
   it("transporte spent", () => expect(calcBudgetSpent(txs, CAT_TRANS)).toBe(15000));
   it("categoría sin gasto = 0", () => expect(calcBudgetSpent(txs, "otra")).toBe(0));
   it("income no cuenta en spent", () => expect(calcBudgetSpent([{ amount: 1000, category_id: CAT_SUPER, type: "income" }], CAT_SUPER)).toBe(0));

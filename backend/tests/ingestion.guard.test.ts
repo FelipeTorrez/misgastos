@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-const store: Record<string, any[]> = { raw_events: [], transactions: [], categories: [{ id: "cat-otros", slug: "otros" }, { id: "cat-super", slug: "supermercado" }], accounts: [], rules: [] };
+const store: Record<string, any[]> = { raw_events: [], transactions: [], categories: [{ id: "cat-otros", slug: "otros" }, { id: "cat-super", slug: "alimentacion" }], accounts: [], rules: [] };
 function reset(){ for(const k of Object.keys(store)) if(!["categories"].includes(k)) store[k]=[]; }
 function query(table:string){
   let filters:any[]=[]; let inserts:any=null;

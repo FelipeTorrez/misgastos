@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-const store: Record<string, any[]> = { raw_events: [], transactions: [], categories: [{ id: "cat-otros", slug: "otros" }, { id: "cat-super", slug: "supermercado" }], accounts: [], rules: [], budgets: [] };
+const store: Record<string, any[]> = { raw_events: [], transactions: [], categories: [{ id: "cat-otros", slug: "otros" }, { id: "cat-super", slug: "alimentacion" }], accounts: [], rules: [], budgets: [] };
 function reset(){ for(const k of Object.keys(store)) if(!["categories"].includes(k)) store[k]=[]; }
 function query(table:string){
   let filters:any[]=[]; let inserts:any=null;
@@ -64,7 +64,7 @@ describe("SDD Agente Financiero — Finan (direction + veredicto)", ()=>{
     it("Recibiste $21.700 Falabella → income in", async ()=>{
       const prov = new GroqProvider() as any;
       const out = await prov.mock(
-        { normalized_text: "recibiste $21.700 te transfirieron $21.700 a tu cuenta banco falabella 3506", parser_hints:{ amount:21700 }, categories:["otros","supermercado"], user_rules:[], locale:"es-CL" },
+        { normalized_text: "recibiste $21.700 te transfirieron $21.700 a tu cuenta banco falabella 3506", parser_hints:{ amount:21700 }, categories:["otros","alimentacion"], user_rules:[], locale:"es-CL" },
         "test"
       );
       expect(out.is_transaction).toBe(true);
@@ -108,14 +108,14 @@ describe("SDD Agente Financiero — Finan (direction + veredicto)", ()=>{
     it("Compraste $1.300 en Angaroa → expense otros (sin regla)", async ()=>{
       const prov = new GroqProvider() as any;
       const out = await prov.mock(
-        { normalized_text: "compraste $1.300 en angaroa con tu cmr mastercard", parser_hints:{ amount:1300, merchant_guess:"Angaroa" }, categories:["otros","supermercado"], user_rules:[], locale:"es-CL" },
+        { normalized_text: "compraste $1.300 en angaroa con tu cmr mastercard", parser_hints:{ amount:1300, merchant_guess:"Angaroa" }, categories:["otros","alimentacion"], user_rules:[], locale:"es-CL" },
         "test"
       );
       expect(out.is_transaction).toBe(true);
       expect(out.transaction_type).toBe("expense");
       expect(out.direction).toBe("out");
-      // Angaroa no está en lista supermercado, cae a otros (o con merchant_guess explícito)
-      expect(["otros","supermercado"]).toContain(out.category);
+      // Angaroa no está en lista alimentacion, cae a otros (o con merchant_guess explícito)
+      expect(["otros","alimentacion"]).toContain(out.category);
       expect(out.reason).toContain("gasto");
     });
     it("transfer interna entre cuentas → transfer internal", async ()=>{

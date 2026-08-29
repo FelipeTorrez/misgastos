@@ -3,10 +3,10 @@ import { API_URL } from "./supabase";
 export type Category = { id: string; label: string; slug: string; type?: string };
 
 export const FALLBACK_CATEGORIES: Category[] = [
-  { id: "00000000-0000-0000-0000-000000000001", label: "Supermercado", slug: "supermercado", type: "expense" },
+  { id: "00000000-0000-0000-0000-000000000001", label: "Alimentación", slug: "alimentacion", type: "expense" },
   { id: "00000000-0000-0000-0000-000000000002", label: "Transporte", slug: "transporte", type: "expense" },
   { id: "00000000-0000-0000-0000-000000000003", label: "Suscripciones", slug: "suscripciones", type: "subscription" },
-  { id: "00000000-0000-0000-0000-000000000004", label: "Restaurantes", slug: "restaurantes", type: "expense" },
+  { id: "00000000-0000-0000-0000-000000000004", label: "Restaurantes y Café", slug: "restaurantes", type: "expense" },
   { id: "00000000-0000-0000-0000-000000000005", label: "Servicios", slug: "servicios", type: "expense" },
   { id: "00000000-0000-0000-0000-000000000006", label: "Otros", slug: "otros", type: "expense" },
 ];

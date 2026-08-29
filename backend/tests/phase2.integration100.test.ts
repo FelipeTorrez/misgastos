@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { dataset100 } from "../../tests/fixtures/dataset100.js";
 
 const CAT_IDS: Record<string, string> = {
-  supermercado: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  alimentacion: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
   transporte: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
   restaurantes: "cccccccc-cccc-cccc-cccc-cccccccccccc",
   suscripciones: "dddddddd-dddd-dddd-dddd-dddddddddddd",
@@ -41,7 +41,7 @@ describe("Phase 2 — Integración 100 dataset (UX + reglas)", ()=>{
   it("inserta 100 y valida balance + presupuesto global con dataset real", async ()=>{
     // presupuestos
     await app.inject({ method:"POST", url:"/v1/budgets", headers:{"x-user-id":"demo"}, payload:{ category_id:null, amount:1800000, month:"2026-08-01"}});
-    await app.inject({ method:"POST", url:"/v1/budgets", headers:{"x-user-id":"demo"}, payload:{ category_id:CAT_IDS.supermercado, amount:350000, month:"2026-08-01"}});
+    await app.inject({ method:"POST", url:"/v1/budgets", headers:{"x-user-id":"demo"}, payload:{ category_id:CAT_IDS.alimentacion, amount:350000, month:"2026-08-01"}});
     await app.inject({ method:"POST", url:"/v1/budgets", headers:{"x-user-id":"demo"}, payload:{ category_id:CAT_IDS.transporte, amount:200000, month:"2026-08-01"}});
 
     for(const f of dataset100){
@@ -65,7 +65,7 @@ describe("Phase 2 — Integración 100 dataset (UX + reglas)", ()=>{
     const budRes = await app.inject({ method:"GET", url:"/v1/budgets?month=2026-08-01", headers:{"x-user-id":"demo"}});
     const budgets = JSON.parse(budRes.body);
     const global = budgets.find((b:any)=>b.category_id===null);
-    const superM = budgets.find((b:any)=>b.category_id===CAT_IDS.supermercado);
+    const superM = budgets.find((b:any)=>b.category_id===CAT_IDS.alimentacion);
     expect(global.spent).toBe(bal.expense); // global = suma todos los expense
     expect(superM.pct).toBeGreaterThan(100); // overspend intencional valida UX rojo (462k/350k=132%)
     expect(superM.spent).toBeGreaterThan(350000);
@@ -78,8 +78,8 @@ describe("Phase 2 — Integración 100 dataset (UX + reglas)", ()=>{
     }
     const all = JSON.parse((await app.inject({ method:"GET", url:"/v1/transactions", headers:{"x-user-id":"demo"}})).body);
     expect(all.length).toBe(10);
-    const filtered = JSON.parse((await app.inject({ method:"GET", url:`/v1/transactions?category_id=${CAT_IDS.supermercado}`, headers:{"x-user-id":"demo"}})).body);
-    expect(filtered.every((t:any)=> t.category_id===CAT_IDS.supermercado)).toBe(true);
+    const filtered = JSON.parse((await app.inject({ method:"GET", url:`/v1/transactions?category_id=${CAT_IDS.alimentacion}`, headers:{"x-user-id":"demo"}})).body);
+    expect(filtered.every((t:any)=> t.category_id===CAT_IDS.alimentacion)).toBe(true);
   });
 
   it("manual entry → confirmado, pendiente revisión no aplica en Phase 2", async ()=>{

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 
 vi.mock("../src/lib/supabase.js", () => {
-  const store: any = { raw_events: [], transactions: [], categories: [{ id: "cat-super", slug: "supermercado" }, { id: "cat-sus", slug: "suscripciones" }], rules: [] };
+  const store: any = { raw_events: [], transactions: [], categories: [{ id: "cat-super", slug: "alimentacion" }, { id: "cat-sus", slug: "suscripciones" }], rules: [] };
   const query = (table:string) => {
     let inserts:any=null;
     return {
@@ -23,10 +23,10 @@ describe("Phase 4 — AI via ingestion (mock Groq)", () => {
     const mock = createAIProvider("mock");
     expect(groq).toBeDefined(); expect(mock).toBeDefined();
   });
-  it("mock clasifica Lider -> supermercado", async () => {
+  it("mock clasifica Lider -> alimentacion", async () => {
     const p = createAIProvider("mock");
-    const out = await p.classify({ normalized_text: "compra en lider", parser_hints: { amount: 32990, merchant_guess: "Lider" }, categories: ["supermercado","otros"], user_rules: [], locale: "es-CL" });
-    expect(out.category).toBe("supermercado");
+    const out = await p.classify({ normalized_text: "compra en lider", parser_hints: { amount: 32990, merchant_guess: "Lider" }, categories: ["alimentacion","otros"], user_rules: [], locale: "es-CL" });
+    expect(out.category).toBe("alimentacion");
     expect(out.amount).toBe(32990);
     expect(out.needs_review).toBe(false);
   });

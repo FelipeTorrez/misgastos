@@ -1,7 +1,7 @@
 # HANDOFF — Contexto completo para continuar desarrollo
 
-> Última actualización: 2026-08-28 (noche) — **Agente Financiero Finan (SDD) + direction in/out/internal** ✅ — `149/149` tests (15 nuevos Finan), `spec/sdd-agente-financiero.md` aplicado, migración `004_add_transaction_direction.sql` en Supabase, deploy Railway `650061ee` (fix puerto `8080→3000`), APK release instalada. Health `0.4.0-finan`. Ver §6 y `spec/roadmap.md`.
-> Siguiente: **Re-probar transferencia recibida $21.700 → income en prod + Phase 9 Advisor (tools) + limpieza fixtures agosto**. Ver §6 y `spec/roadmap.md`.
+> Última actualización: 2026-08-29 — **Rename `supermercado`→`alimentacion`** ✅ — slug+etiqueta "Alimentación" (icono `cart` verde #4ADE80) aplicado en mobile/backend/AI/tests/fixtures + migración `005_rename_supermercado_to_alimentacion.sql` (misma fila/UUID, sin remapeo). Base: 14 categorías personales + migración prod + fix FAB, `categoryIcons.tsx`/`categoryIconsV2.ts` con 14 slugs, `ahorro` (income) separado de `transferencias` (transfer) y excluido de la IA. Health `0.3.0-phase8`.
+> Siguiente: **Redeploy backend a Railway** (+ aplicar migración `005` a prod). Ver §4 (-15) y §6 "Pendiente deploy Railway".
 
 > ⚠️ Cambió la arquitectura de navegación: ahora hay un **shell persistente** (mes + balance hero + sub-tabs anidados + FAB global). Detalle abajo en §6.
 
@@ -21,7 +21,7 @@
 | Backend | Node.js + Fastify + tsx (watch) + Node 22 en Railway (prod), Zod para validación |
 | DB | Supabase (Postgres + RLS) — **conectada en cloud (proyecto bqnktrfwoxetbirrodmo), modo real activo** |
 | AI | Groq API (`qwen/qwen3.8-27b` actual, antes `llama-3.1-70b`) con fallback mock — **Groq real activo** |
-| Tests | Vitest — **134/134 passing** (18 files) · `mobile: tsc --noEmit` **0 errores** (se corrigieron `Amount.tsx`/`ListRow.tsx`) · nuevo `tests/ingestion.guard.test.ts` 9 tests guard |
+| Tests | Vitest — **149/149 passing** (19 files) · `mobile: tsc --noEmit` **0 errores** · `tests/ingestion.guard.test.ts` + `tests/agent-financiero.test.ts` |
 
 ### Estado de fases
 - ✅ Phase 0: Spec + ADRs 001–007 (`spec/`, `docs/decisions/`)
@@ -76,6 +76,7 @@ npx expo prebuild --clean --platform android   # desde mobile/
 7. **Iconos: usar SIEMPRE `MIcon.tsx`** (texto crudo + fontFamily + fromCodePoint). El componente oficial de @expo/vector-icons trunca codepoints >0xFFFF → glifos invisibles en release sin errores en logcat.
 8. **Instalar en device SOLO con assembleRelease** (debug no incrusta bundle JS y exige Metro :8081).
 9. **Editar package.json solo con `npm pkg set`** (PowerShell ConvertTo-Json mete BOM y rompe Gradle/Expo).
+10. **`expo prebuild --clean` también BORRA assets/código nativo COMMITEADO** además de `newArchEnabled` y `usesCleartextTraffic`: elimina `android/app/src/main/assets/fonts/*.ttf` (MaterialCommunityIcons/Ionicons → TODOS los iconos `MIcon` se ven vacíos), los `.kt` custom (`NotificationListener*.kt`) y su registro en `MainApplication.kt` + el `<service>` en `AndroidManifest.xml`. Tras un `prebuild --clean` hay que restaurar: `git checkout HEAD -- mobile/android/app/src/main/assets/fonts mobile/android/app/src/main/java/com/misgastos/app/NotificationListener.kt .../NotificationListenerModule.kt .../NotificationListenerPackage.kt .../MainApplication.kt AndroidManifest.xml` y luego re-parchear `newArchEnabled=false` + `usesCleartextTraffic`. (Solo correr `prebuild` cuando haya deps nativas nuevas; verificar `git status` antes/después.)
 
 ---
 
@@ -162,6 +163,27 @@ Durante la sesión del 25/08 hubo **OTRA IA/sesión editando este mismo repo sim
 ---
 
 ## 4. Cambios de la última sesión (lo más reciente primero)
+
+-15. **Rename `supermercado`→`alimentacion`** — 2026-08-29:
+    - **Objetivo**: renombrar la categoría de supermercado a "Alimentación" manteniendo su iconografía actual (icono `cart`/`ShoppingCart`, verde #4ADE80).
+    - **Alcance**: renombrar el slug en TODO el sistema (no solo la etiqueta): `mobile/src/theme/categoryIcons.tsx`, `categoryIconsV2.ts`, `lib/categories.ts`, `GaleriaUI.tsx`, `backend/src/modules/categories/routes.ts`, `modules/ingestion/routes.ts`, `ai/providers/GroqProvider.ts`, `ai/prompts/agente-financiero.ts`, tests (`phase1`, `phase2.*`, `phase3`, `phase4.*`, `phase5`, `ingestion.guard`, `agent-financiero`, `GroqProvider.test`, `budgets/logic.test`), fixtures (`tests/fixtures/{fixtures,dataset100,generate}.ts`) y `supabase/seed_phase2.sql`.
+    - **Migración** `supabase/migrations/005_rename_supermercado_to_alimentacion.sql` (aún NO aplicada a prod): `update categories set slug='alimentacion', name='Alimentación' where slug='supermercado' and is_system=true and user_id is null`. No remapea transactions/budgets/rules porque referencian `category_id` (UUID) — solo cambian slug+name de la misma fila. Idempotente.
+    - **Aplicar a prod**: `cd backend; npm run setup-supabase` (aplicará 005) ✍️ junto al redeploy Railway.
+    - **Dependencia**: si ya corriste `004` en prod, `supermercado` es la fila viva; 005 la renombra. Al estar `004` aplicada, `alimentacion` ya no existe → no hay conflicto de `unique(slug,user_id)`.
+
+-14. **14 categorías personales + migración producción + fix FAB** — 2026-08-29:
+    - **Objetivo**: adaptar las 14 categorías genéricas a las del Excel personal del usuario (`LUZ/AguaBidones/INTERNET→servicios`, `Diversion/Baile/VACACIONES→entretenimiento`, `Aseo→hogar`, separar `Ahorro` manual de `Transferencias` IA).
+    - **14 finales** (slugs = `mobile/src/theme/categoryIcons.tsx:14` y `categoryIconsV2.ts:21`): `vivienda`(#2DD4BF), `servicios`(#FBBF24), `alimentacion`(#4ADE80), `restaurantes`→"Restaurantes y Café"(#FB923C), `transporte`(#60A5FA), `salud`(#F87171, sin Gym), `entretenimiento`→"Diversión"(#E879F9), `compras`(#F472B6), `hogar`→"Hogar y Aseo" `spray-bottle`/`SprayBottle`(#A3E635), `suscripciones`(#C084FC), `deudas`(#FCA5A5), `ahorro` `piggy-bank`/`PiggyBank`(#22D3EE, **income**), `transferencias` `swap-horizontal`/`ArrowsLeftRight`(#38BDF8, **transfer**), `otros`(#94A3B8).
+    - **Ahorro vs Transferencias**: `ahorro` es **income manual** (FAB → suma a balance). `transferencias` es **transfer** (IA internal, neutro al balance por ADR-002). `ahorro` se excluye de la lista que recibe la IA (`ingestion/routes.ts` `filter slug!=ahorro` + prompt `agente-financiero.ts` "NUNCA uses ahorro") → queda reservado a manual/regla. Una notif banco→banco entra como `transferencias` y se puede `PATCH` a `ahorro` (crea regla `merchant→ahorro`).
+    - **Migración** `supabase/migrations/004_personal_14_categories.sql` (aplicada a prod vía `npm run setup-supabase`): rename `restaurantes`/`entretenimiento`, remap `alimentacion→supermercado` y `educacion→otros` (transactions+budgets+rules), delete `alimentacion`/`educacion`, insert `hogar`(expense) + `ahorro`(income). Verificado: 14 filas `is_system`, 0 huérfanas en transactions/budgets.
+    - **Fix FAB/iconos**: un `expo prebuild --clean` de esta sesión borró `MaterialCommunityIcons.ttf`+`Ionicons.ttf` y el módulo nativo `NotificationListener` → iconos vacíos. Restaurado desde git + `gradlew clean` + `assembleRelease` (bundle fresco) + install OK. Ver gotcha 10.
+    - **PENDIENTE (Railway)**: el backend en prod aún corre el código viejo. `GET /v1/categories` ya devuelve las 14 nuevas (lee BD), pero falta redeployar `backend/src/ai/prompts/agente-financiero.ts`, `backend/src/modules/ingestion/routes.ts` (filtro ahorro) y `backend/src/modules/categories/routes.ts` (fallback labels) para que la IA no auto-clasifique `ahorro`.
+
+-13. **Movimientos Sheet — edición por fila táctil (SDD)** — 2026-08-28 noche — `spec/sdd-movimientos-sheet.md` + `design-system/misgastos/pages/movimientos.md` aplicados, skill `ui-ux-pro-max`:
+   - **Problema**: `Modal` centrado 88% lista plana `Text` sin iconos + `✎` solo en `pending_*`/`confirmed` → `corrected` no re-editable.
+   - **Fix** `mobile/src/screens/Movimientos.tsx:1`: `Sheet.tsx:4` inferior (no tapa pantalla) + `Pressable` fila entera (`corrected` incluido, `›` chevron) + `ScrollView` horizontal chips `92w` con `CategoryCircle.tsx:5`/`categoryIconsV2.ts:21` (14 slugs, phosphor) preseleccionado + toggle `Guardar para este comercio` (`savePref` → `PATCH update_rule`) reemplaza `Alert` + `ConfirmBtn` `✓` solo para `isPending`.
+   - **DS**: `design-system/misgastos/MASTER.md` (Dark OLED) + `pages/movimientos.md` override tokens `C.bg #0C1322`/`C.primary #38BDF8`, checklist 9 puntos.
+   - **Verificación**: `tsc TSC_OK`, `vitest 149 passed`, `gradlew assembleRelease 1m20s` + `adb 140932559G001137 install Success` + `uiautomator dump` Sheet `bounds [0,1076]` + toggle ON/OFF + chip `Alimentación/Compras` + save `Falabella Transferencias→Compras→Alimentación` OK (re-editable).
 
 -12. **Notification Guard + Allowlist v2 + Parser CLP (Guard IA)** — 2026-08-27 tarde — `spec/sdd-notification-guard.md` aplicado:
    - **Problema**: notifs promo `cupo aprobado por $750.000` con monto eran creadas como `expense` fantasma; Wallet `CLP1,250` no parseaba (regex solo `$`) y `Billetera de Google` venía de `com.google.android.gms` no allowlistada → solo Falabella entraba fuera de LAN (validado por usuario, 2 compras Angaroa $1.300).
@@ -351,6 +373,7 @@ Durante la sesión del 25/08 hubo **OTRA IA/sesión editando este mismo repo sim
 ### Pendientes menores
 - FAB agrega solo Gasto/Ingreso (Transferencia deferida) — `FabMenu` sin Transferencia
 - `/v1/accounts` sin modo mock (irrelevante con Supabase real)
+- **Pendiente deploy Railway (categorías)**: redeployar backend a prod para activar (1) `ingestion/routes.ts` filtro `slug!=ahorro`, (2) `agente-financiero.ts` prompt "NUNCA uses ahorro", (3) `categories/routes.ts` fallback `SYSTEM_CATEGORIES` con labels nuevos. La BD prod ya está migrada (14 categorías). Sin el redeploy, la IA de prod puede clasificar ingresos como `ahorro` de forma auto (riesgo menor, solo afecta notifs nuevas).
 - **Pendiente documentado — reenvío nativo Transsion**: en Tecno Camon 40 Pro el `onNotificationPosted` no se dispara 100% nativo para terceros; workaround validado es **Reenviar notificaciones en pantalla** + reintento automático al abrir. Queda para sesión dedicada (evaluar `AccessibilityService` como fallback).
 
 ### Fase siguiente (v1 → v1.1)

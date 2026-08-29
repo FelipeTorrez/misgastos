@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const store: any = { raw_events: [], transactions: [], categories: [{ slug: "supermercado" }], rules: [] };
+const store: any = { raw_events: [], transactions: [], categories: [{ slug: "alimentacion" }], rules: [] };
 let txStore: any[] = [];
 
 function reset(){ txStore=[]; store.transactions=[]; }

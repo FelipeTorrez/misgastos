@@ -12,18 +12,18 @@ import { C } from "./tokens";
 export type CatIcon = { icon: keyof typeof MaterialCommunityIcons.glyphMap; color: string; label: string };
 
 export const CATEGORY_ICONS: Record<string, CatIcon> = {
-  supermercado: { icon: "cart", color: "#4ADE80", label: "Supermercado" },
-  restaurantes: { icon: "silverware-fork", color: "#FB923C", label: "Restaurantes" },
-  transporte: { icon: "car", color: "#60A5FA", label: "Transporte" },
-  suscripciones: { icon: "television", color: "#C084FC", label: "Suscripciones" },
-  servicios: { icon: "flash", color: "#FBBF24", label: "Servicios" },
   vivienda: { icon: "home", color: "#2DD4BF", label: "Vivienda" },
+  servicios: { icon: "flash", color: "#FBBF24", label: "Servicios" },
+  alimentacion: { icon: "cart", color: "#4ADE80", label: "Alimentación" },
+  restaurantes: { icon: "silverware-fork", color: "#FB923C", label: "Restaurantes y Café" },
+  transporte: { icon: "car", color: "#60A5FA", label: "Transporte" },
   salud: { icon: "heart", color: "#F87171", label: "Salud" },
-  educacion: { icon: "book-open-variant", color: "#818CF8", label: "Educación" },
-  entretenimiento: { icon: "gamepad-variant", color: "#E879F9", label: "Entretenimiento" },
+  entretenimiento: { icon: "gamepad-variant", color: "#E879F9", label: "Diversión" },
   compras: { icon: "shopping", color: "#F472B6", label: "Compras" },
+  hogar: { icon: "spray-bottle", color: "#A3E635", label: "Hogar y Aseo" },
+  suscripciones: { icon: "television", color: "#C084FC", label: "Suscripciones" },
   deudas: { icon: "credit-card", color: "#FCA5A5", label: "Deudas" },
-  alimentacion: { icon: "food", color: "#A3E635", label: "Alimentación" },
+  ahorro: { icon: "piggy-bank", color: "#22D3EE", label: "Ahorro" },
   transferencias: { icon: "swap-horizontal", color: C.primary, label: "Transferencias" },
   otros: { icon: "dots-horizontal", color: C.dim, label: "Otros" },
 };

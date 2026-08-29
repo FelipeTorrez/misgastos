@@ -4,17 +4,17 @@ import { createAIProvider } from "../src/ai/providers/AIProvider.js";
 import { isDuplicate } from "../src/modules/ingestion/dedup.js";
 
 describe("Conjunta 4+5 — AI categoriza y dedup no duplica (pipeline directo)", ()=>{
-  it("Parser Lider + AI supermercado", async ()=>{
+  it("Parser Lider + AI alimentacion", async ()=>{
     const p = parseEmail("Compra por $32.990 en Lider - 24/08/2026 15:30");
     expect(p.amount).toBe(32990);
     const ai = await createAIProvider("mock").classify({
       normalized_text: "compra en lider",
       parser_hints: { amount: p.amount!, date: p.date!, merchant_guess: p.merchant! },
-      categories: ["supermercado","suscripciones","otros"],
+      categories: ["alimentacion","suscripciones","otros"],
       user_rules: [],
       locale: "es-CL"
     });
-    expect(ai.category).toBe("supermercado");
+    expect(ai.category).toBe("alimentacion");
     expect(ai.confidence).toBeGreaterThan(0.5);
   });
 
@@ -23,7 +23,7 @@ describe("Conjunta 4+5 — AI categoriza y dedup no duplica (pipeline directo)",
     const ai1 = await createAIProvider("mock").classify({
       normalized_text: "compra en lider",
       parser_hints: { amount: p1.amount!, date: p1.date!, merchant_guess: p1.merchant! },
-      categories: ["supermercado","otros"],
+      categories: ["alimentacion","otros"],
       user_rules: [],
       locale: "es-CL"
     });
@@ -32,15 +32,15 @@ describe("Conjunta 4+5 — AI categoriza y dedup no duplica (pipeline directo)",
     const ai2 = await createAIProvider("mock").classify({
       normalized_text: "compra en lider",
       parser_hints: { amount: p2.amount!, date: p2.date!, merchant_guess: p2.merchant! },
-      categories: ["supermercado","otros"],
+      categories: ["alimentacion","otros"],
       user_rules: [],
       locale: "es-CL"
     });
     const cand = { amount: ai2.amount, date: p2.date, time: p2.time, merchant: ai2.merchant, type:"expense" };
     const dup = isDuplicate(cand as any, existing as any);
     expect(dup?.id).toBe("orig-1");
-    expect(ai1.category).toBe("supermercado");
-    expect(ai2.category).toBe("supermercado");
+    expect(ai1.category).toBe("alimentacion");
+    expect(ai2.category).toBe("alimentacion");
   });
 
   it("distinto comercio no dedupa aunque misma AI categoría", async ()=>{

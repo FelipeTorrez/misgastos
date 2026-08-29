@@ -116,7 +116,7 @@ Mapa categoría-slug → icono + tinte + label es-CL (`src/theme/categoryIcons.t
 
 | slug | icono (MCI) | tinte |
 |------|-------------|-------|
-| supermercado | cart | #4ADE80 |
+| supermercado→alimentacion | cart | #4ADE80 |
 | restaurantes | silverware-fork | #FB923C |
 | transporte | car | #60A5FA |
 | suscripciones | television | #C084FC |

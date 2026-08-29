@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Pressable } from "react-native";
 import { C, R, shiftMonth, monthLabel } from "../theme/tokens";
 import { Budget } from "../lib/useShellData";
@@ -24,7 +24,12 @@ export function Presupuesto({ budgets, cats, month, onRefresh }: {
 
   const notify = (m: string) => { setToast(m); setTimeout(() => setToast(null), 2800); };
   const expenseCats = cats.filter(c => c.type === "expense");
-  const rows = budgets.filter(b => b.category_id) as Budget[];
+  const rows = useMemo(() => {
+    return budgets
+      .filter((b): b is Budget => Boolean(b.category_id))
+      .slice()
+      .sort((a, b) => b.amount - a.amount || (a.categories?.name ?? "").localeCompare(b.categories?.name ?? "", "es"));
+  }, [budgets]);
   const selected = cats.find(c => c.id === selectedId);
   const existing = budgets.find(b => b.category_id === selectedId) as Budget | undefined;
 

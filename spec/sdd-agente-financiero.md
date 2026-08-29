@@ -166,7 +166,7 @@ Ejemplos (few-shot):
       "reason":"Transferencia enviada a María González → gasto"}
 4) "Compraste $1.300 en Angaroa con tu CMR Mastercard"
    → {"is_transaction":true,"transaction_type":"expense","direction":"out","amount":1300,
-      "merchant":"Angaroa","counterparty":null,"category":"supermercado",
+      "merchant":"Angaroa","counterparty":null,"category":"alimentacion",
       "payment_method":"credit_card","needs_review":false,"confidence":0.9,
       "reason":"Compra con tarjeta → gasto"}
 5) "tienes un nuevo cupo aprobado por $750.000"
@@ -256,7 +256,7 @@ Nuevo `backend/tests/agent-financiero.test.ts` (Vitest):
 4. `"Transferencia desde tu Cuenta Corriente a tu Cuenta Vista"` → `transfer`, `direction=internal`.
 5. `"Recibiste tu sueldo por $1.200.000"` → `income`.
 6. `"Te devolvimos $8.990 en tu tarjeta"` → `income` (devolución).
-7. `"Compraste $1.300 en Angaroa con tu CMR"` → `expense`, `supermercado`.
+7. `"Compraste $1.300 en Angaroa con tu CMR"` → `expense`, `alimentacion`.
 8. `"CLP1,250 con CMR ... Billetera de Google"` → `expense`, `amount=1250`.
 9. `"tienes un nuevo cupo aprobado por $750.000"` → `is_transaction=false`, `transaction=null`.
 

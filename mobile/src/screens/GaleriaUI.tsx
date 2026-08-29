@@ -7,6 +7,9 @@ import { ScrollView, View, Text, StyleSheet } from "react-native";
 import { Card, SectionHeader } from "../components/ui/Card";
 import { Progress } from "../components/ui/Progress";
 import { CategoryCircle, CategoryTag } from "../components/ui/CategoryCircle";
+import { CategoryIcon } from "../components/ui/CategoryIcon";
+import { AppIcon } from "../components/ui/AppIcon";
+import { MIcon } from "../components/ui/MIcon";
 import { Amount } from "../components/ui/Amount";
 import { MonthPager } from "../components/ui/MonthPager";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -16,6 +19,17 @@ import { FabMenu } from "../components/ui/FabMenu";
 import { Sheet } from "../components/ui/Sheet";
 import { ScreenHeader, Logo, AiChip, HeaderIconButton } from "../components/ui/ScreenHeader";
 import { C, T, monthLabel } from "../theme/tokens";
+import { catIcon } from "../theme/categoryIcons";
+import { categoryMeta } from "../theme/categoryIconsV2";
+
+const CAT_SLUGS = ["alimentacion","restaurantes","transporte","suscripciones","servicios","vivienda","salud","educacion","entretenimiento","compras","deudas","transferencias","otros"] as const;
+
+const EMOJI: Record<string, string> = {
+  alimentacion: "🛒", restaurantes: "🍽️", transporte: "🚗", suscripciones: "📺",
+  servicios: "⚡", vivienda: "🏠", salud: "❤️", educacion: "📚",
+  entretenimiento: "🎮", compras: "🛍️", deudas: "💳",
+  transferencias: "🔁", otros: "•••",
+};
 
 export function GaleriaUI() {
   const [month, setMonth] = useState("2026-08");
@@ -69,21 +83,97 @@ export function GaleriaUI() {
         <SectionHeader title="Iconos por categoría (CategoryCircle)" />
         <Card>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
-            {["supermercado","restaurantes","transporte","suscripciones","servicios","vivienda","salud","educacion","entretenimiento","compras","deudas","alimentacion"].map(slug => (
+            {["alimentacion","restaurantes","transporte","suscripciones","servicios","vivienda","salud","educacion","entretenimiento","compras","deudas"].map(slug => (
               <CategoryCircle key={slug} slug={slug} />
             ))}
           </View>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-            <CategoryTag name="Supermercado" slug="supermercado" />
+            <CategoryTag name="Alimentación" slug="alimentacion" />
             <CategoryTag name="Transporte" slug="transporte" />
             <CategoryTag name="Suscripciones" slug="suscripciones" />
+          </View>
+        </Card>
+
+        <SectionHeader title="Iconografía semántica · comparativa" />
+        <Card style={{ gap: 14 }}>
+          <Text style={s.hint}>V1 · MaterialCommunityIcons (actual) — 12 categorías</Text>
+          <View style={s.catRow}>
+            {CAT_SLUGS.slice(0, 12).map(slug => {
+              const ci = catIcon(slug);
+              return (
+                <View key={slug} style={s.catCell}>
+                  <View style={[s.tintCircle, { backgroundColor: `${ci.color}22` }]}>
+                    <MIcon name={ci.icon} size={18} color={ci.color} />
+                  </View>
+                  <Text style={s.catLabel} numberOfLines={1}>{slug}</Text>
+                </View>
+              );
+            })}
+          </View>
+
+          <Text style={[s.hint, { color: C.primary, fontWeight: "700" }]}>★ V2 · Phosphor fill (propuesto — default) — 14 categorías</Text>
+          <View style={s.catRow}>
+            {CAT_SLUGS.map(slug => {
+              const m = categoryMeta(slug);
+              return (
+                <View key={slug} style={s.catCell}>
+                  <View style={[s.tintCircle, { backgroundColor: m.bg }]}>
+                    <CategoryIcon slug={slug} size={20} />
+                  </View>
+                  <Text style={s.catLabel} numberOfLines={1}>{slug}</Text>
+                </View>
+              );
+            })}
+          </View>
+
+          <Text style={s.hint}>V2 · Phosphor duotone (alternativa, duotoneOpacity 0.32)</Text>
+          <View style={s.catRow}>
+            {CAT_SLUGS.map(slug => {
+              const m = categoryMeta(slug);
+              return (
+                <View key={slug} style={s.catCell}>
+                  <View style={[s.tintCircle, { backgroundColor: m.bg }]}>
+                    <CategoryIcon slug={slug} size={20} variant="duotone" />
+                  </View>
+                  <Text style={s.catLabel} numberOfLines={1}>{slug}</Text>
+                </View>
+              );
+            })}
+          </View>
+
+          <Text style={s.hint}>Referencia · Emoji (conceptual — no vectorial)</Text>
+          <View style={s.catRow}>
+            {CAT_SLUGS.map(slug => (
+              <View key={slug} style={s.catCell}>
+                <View style={[s.tintCircle, { backgroundColor: categoryMeta(slug).bg }]}>
+                  <Text style={{ fontSize: 18 }}>{EMOJI[slug]}</Text>
+                </View>
+                <Text style={s.catLabel} numberOfLines={1}>{slug}</Text>
+              </View>
+            ))}
+          </View>
+        </Card>
+
+        <SectionHeader title="Iconografía funcional · Lucide (propuesto)" />
+        <Card>
+          <View style={s.fnRow}>
+            {(["chevron-left","chevron-right","cog","settings","tag","palette","flask","trending-down","trending-up","swap-horizontal","close","trash-can","plus","wallet","receipt","view-grid","chart-bar","flag","copy","target"] as const).map(n => (
+              <View key={n} style={s.fnCell}>
+                <View style={s.fnBox}><AppIcon name={n} size={20} color={C.primary} /></View>
+                <Text style={s.catLabel} numberOfLines={1}>{n}</Text>
+              </View>
+            ))}
+          </View>
+          <View style={{ flexDirection: "row", gap: 12, marginTop: 12 }}>
+            <View style={s.aiChipDemo}><AppIcon name="robot-happy" size={18} color={C.primary} /><Text style={s.aiChipText}>IA</Text></View>
+            <View style={s.aiChipDemo}><AppIcon name="zap" size={18} color={C.warning} /><Text style={{ color: C.warning, fontSize: 12, fontWeight: "800" }}>IA Pro</Text></View>
           </View>
         </Card>
 
         <SectionHeader title="Barras de progreso (estados + icono)" />
         <Card style={{ gap: 14 }}>
           {[
-            { l: "Supermercado", slug: "supermercado", spent: 65000, total: 100000 },
+            { l: "Alimentación", slug: "alimentacion", spent: 65000, total: 100000 },
             { l: "Transporte", slug: "transporte", spent: 43074, total: 60000 },
             { l: "Entretenimiento", slug: "entretenimiento", spent: 20000, total: 20000 },
           ].map(b => {
@@ -111,8 +201,8 @@ export function GaleriaUI() {
         <DayHeader label="Hoy" />
         <View style={{ gap: 8 }}>
           <ListRow
-            left={<CategoryCircle slug="supermercado" />}
-            title={<RowText main="Lider" sub="Supermercado" />}
+            left={<CategoryCircle slug="alimentacion" />}
+            title={<RowText main="Lider" sub="Alimentación" />}
             right={<Amount value={32990} tone="expense" />}
             subRight={<StatusBadge status="pending_ai" />}
           />
@@ -164,4 +254,13 @@ const s = StyleSheet.create({
   barName: { color: C.text, fontSize: 14, fontWeight: "800" },
   barAmounts: { color: C.dim, fontSize: 13 },
   sheetText: { color: C.text, fontSize: 14 },
+  catRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  catCell: { alignItems: "center", width: 56 },
+  tintCircle: { width: 44, height: 44, borderRadius: 999, alignItems: "center", justifyContent: "center", marginBottom: 4 },
+  catLabel: { color: C.faint, fontSize: 9, textAlign: "center" },
+  fnRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  fnCell: { alignItems: "center", width: 62 },
+  fnBox: { width: 46, height: 46, borderRadius: 12, backgroundColor: C.surfaceAlt, borderWidth: 1, borderColor: C.border, alignItems: "center", justifyContent: "center", marginBottom: 4 },
+  aiChipDemo: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: C.primarySoft, borderWidth: 1, borderColor: "rgba(56,189,248,0.35)" },
+  aiChipText: { color: C.primary, fontSize: 12, fontWeight: "800", letterSpacing: 0.2 },
 });

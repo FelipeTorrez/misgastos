@@ -3,10 +3,10 @@ import { GroqProvider } from "./GroqProvider.js";
 import { AgentOutputSchema } from "./AIProvider.js";
 
 describe("Phase 4 — AI Agent #1 (Groq) mock", () => {
-  it("mock Lider -> supermercado", async () => {
+  it("mock Lider -> alimentacion", async () => {
     const p = new GroqProvider();
-    const out = await (p as any).mock({ normalized_text: "compra lider", parser_hints: { amount: 32990, merchant_guess: "Lider" }, categories: ["supermercado","otros"], user_rules: [], locale: "es-CL" }, "test");
-    expect(out.category).toBe("supermercado");
+    const out = await (p as any).mock({ normalized_text: "compra lider", parser_hints: { amount: 32990, merchant_guess: "Lider" }, categories: ["alimentacion","otros"], user_rules: [], locale: "es-CL" }, "test");
+    expect(out.category).toBe("alimentacion");
     expect(AgentOutputSchema.safeParse(out).success).toBe(true);
   });
   it("mock Spotify -> suscripciones + recurring", async () => {

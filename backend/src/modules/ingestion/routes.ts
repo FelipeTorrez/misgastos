@@ -94,11 +94,11 @@ async function processIngestion(data: any, userId: string) {
       const provider = createAIProvider(process.env.GROQ_API_KEY ? "groq" : "mock");
       let categories: string[];
       if (isMockMode) {
-        categories = ["supermercado", "transporte", "suscripciones", "restaurantes", "servicios", "otros"];
+        categories = ["alimentacion", "transporte", "suscripciones", "restaurantes", "servicios", "otros"];
       } else {
         const { data: cats, error } = await supabase.from("categories").select("id, slug").limit(50);
         if (error) return { status: 500, body: { error: `categories: ${error.message}` } };
-        categories = (cats ?? []).map((c: any) => c.slug);
+        categories = ((cats ?? []) as any[]).map((c: any) => c.slug).filter((s: string) => s !== "ahorro");
       }
       let userRules: { merchant: string; preferred_category: string }[] = [];
       if (isMockMode) {

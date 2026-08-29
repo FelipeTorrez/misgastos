@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 const CAT_SUPER = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const CAT_TRANS = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 const store: Record<string, any[]> = { accounts: [], transactions: [], budgets: [], categories: [
-  { id: CAT_SUPER, slug: "supermercado", name: "Supermercado" },
+  { id: CAT_SUPER, slug: "alimentacion", name: "Alimentación" },
   { id: CAT_TRANS, slug: "transporte", name: "Transporte" }
 ], rules: [] };
 

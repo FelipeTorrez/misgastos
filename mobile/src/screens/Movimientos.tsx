@@ -1,4 +1,4 @@
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, Modal, Alert } from "react-native";
+import { View, Text, FlatList, ScrollView, StyleSheet, TouchableOpacity, Pressable } from "react-native";
 import { useEffect, useState } from "react";
 import { fmtCLP, fmtDate } from "../lib/format";
 import { API_URL } from "../lib/supabase";
@@ -6,17 +6,10 @@ import { Category } from "../lib/categories";
 import { C, R } from "../theme/tokens";
 import { MIcon } from "../components/ui/MIcon";
 import { CategoryCircle } from "../components/ui/CategoryCircle";
+import { StatusBadge } from "../components/ui/StatusBadge";
 import { SwipeRow } from "../components/ui/SwipeRow";
+import { Sheet } from "../components/ui/Sheet";
 import { toTitleCase } from "./Categorias";
-
-const STATUS_COLORS: Record<string, string> = {
-  pending_review: "#f59e0b",
-  pending_ai: "#3b82f6",
-  confirmed: "#10b981",
-  corrected: "#60a5fa",
-  duplicate: "#6b7280",
-  ignored: "#6b7280",
-};
 
 export function Movimientos({ txs, cats, month, filterCategory, onClearFilter, onRefresh }: {
   txs: any[];
@@ -29,6 +22,8 @@ export function Movimientos({ txs, cats, month, filterCategory, onClearFilter, o
   const [local, setLocal] = useState<any[]>([]);
   const [filter, setFilter] = useState<"all" | "pending" | "confirmed">("all");
   const [editingTx, setEditingTx] = useState<any>(null);
+  const [selectedCat, setSelectedCat] = useState<string | null>(null);
+  const [savePref, setSavePref] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => { setLocal(txs); }, [txs]);
@@ -53,38 +48,26 @@ export function Movimientos({ txs, cats, month, filterCategory, onClearFilter, o
     onRefresh?.();
   }
 
-  async function editCategory(tx: any, categoryId: string) {
-    const doPatch = async (updateRule: boolean) => {
-      const res = await fetch(`${API_URL}/v1/transactions/${tx.id}`, {
+  function openEdit(tx: any) {
+    setEditingTx(tx);
+    setSelectedCat(tx.category_id ?? null);
+    setSavePref(true);
+  }
+
+  async function saveCategory() {
+    if (!editingTx || !selectedCat) { notify("Elige una categoría"); return; }
+    try {
+      const res = await fetch(`${API_URL}/v1/transactions/${editingTx.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ category_id: categoryId, status: "corrected", update_rule: updateRule }),
+        body: JSON.stringify({ category_id: selectedCat, status: "corrected", update_rule: savePref }),
       }).catch(() => null);
-      if (!res || !res.ok) { notify(`Error al corregir categoría`); return; }
+      if (!res || !res.ok) { notify("Error al guardar categoría"); return; }
       setEditingTx(null);
       onRefresh?.();
-    };
-    try {
-      const rRes = await fetch(`${API_URL}/v1/rules`);
-      const rules = rRes.ok ? await rRes.json() : [];
-      const norm = (tx.merchant || "").toLowerCase().trim();
-      const existing = (rules as any[]).find(r => r.merchant_normalized === norm);
-      if (existing && existing.preferred_category_id !== categoryId) {
-        const oldLabel = cats.find(c => c.id === existing.preferred_category_id)?.label ?? "otra categoría";
-        const newLabel = cats.find(c => c.id === categoryId)?.label ?? categoryId;
-        Alert.alert(
-          "¿Cambiar preferencia?",
-          `Ya tienes una regla: "${toTitleCase(tx.merchant)} → ${oldLabel}". ¿Quieres cambiarla a "${newLabel}" para los próximos movimientos?`,
-          [
-            { text: `Mantener ${oldLabel}`, style: "cancel", onPress: () => doPatch(false) },
-            { text: `Cambiar a ${newLabel}`, onPress: () => doPatch(true) },
-          ]
-        );
-        return;
-      }
-      await doPatch(true);
+      notify(savePref ? "Categoría y preferencia guardadas" : "Categoría actualizada");
     } catch {
-      await doPatch(true);
+      notify("Error de red");
     }
   }
 
@@ -95,6 +78,7 @@ export function Movimientos({ txs, cats, month, filterCategory, onClearFilter, o
     return true;
   });
   const pendingCount = local.filter(tx => tx.status === "pending_review" || tx.status === "pending_ai").length;
+  const isPending = (tx: any) => tx.status === "pending_review" || tx.status === "pending_ai";
 
   return (
     <View style={{ flex: 1 }}>
@@ -133,48 +117,80 @@ export function Movimientos({ txs, cats, month, filterCategory, onClearFilter, o
         ListEmptyComponent={<Text style={s.muted}>{filterCategory ? "Sin movimientos en esta categoría." : "Aún no hay movimientos este mes. Usa el botón +."}</Text>}
         renderItem={({ item }) => (
           <SwipeRow onDelete={() => deleteTx(item)}>
-            <View style={[s.row, item.status === "pending_review" && s.rowPending]}>
-              <CategoryCircle slug={item.category_id ? cats.find(c => c.id === item.category_id)?.slug ?? undefined : undefined} size={36} />
-              <View style={{ flex: 1, marginLeft: 10 }}>
+            <Pressable style={({ pressed }) => [s.row, isPending(item) && s.rowPending, pressed && { opacity: 0.75 }]} onPress={() => openEdit(item)}>
+              <View style={{ flexShrink: 0 }}>
+                <CategoryCircle slug={item.category_id ? cats.find(c => c.id === item.category_id)?.slug ?? undefined : undefined} size={36} />
+              </View>
+              <View style={s.center}>
                 <View style={s.rowHeader}>
-                  <Text style={s.merchant}>{toTitleCase(item.merchant)}</Text>
-                  <View style={[s.badge, { backgroundColor: STATUS_COLORS[item.status] ?? "#6b7280" }]}>
-                    <Text style={s.badgeText}>{item.status}</Text>
+                  <Text style={s.merchant} numberOfLines={1} ellipsizeMode="tail">{toTitleCase(item.merchant)}</Text>
+                  <View style={{ flexShrink: 0 }}>
+                    <StatusBadge status={item.status} />
                   </View>
                 </View>
-                <Text style={s.meta}>{(cats.find(c => c.id === item.category_id)?.label ?? (item.type === "income" ? "Ingreso" : item.type === "transfer" ? "Transferencia" : "Sin categoría"))} · {fmtDate(item.date)}</Text>
+                <Text style={s.meta} numberOfLines={1} ellipsizeMode="tail">{(item.counterparty ? `Recibido de ${item.counterparty}` : (cats.find(c => c.id === item.category_id)?.label ?? (item.type === "income" ? "Ingreso" : item.type === "transfer" ? "Transferencia" : "Sin categoría")))} · {fmtDate(item.date)}</Text>
               </View>
-              <Text style={[s.amount, { color: item.type === "income" ? "#34d399" : "#fff" }]}>{item.type === "income" ? "+" : "-"}{fmtCLP(item.amount)}</Text>
-              {(item.status === "pending_review" || item.status === "pending_ai") && (
-                <View style={s.actions}>
-                  <TouchableOpacity style={s.confirmBtn} onPress={() => confirmTx(item)}><Text style={s.confirmBtnText}>✓</Text></TouchableOpacity>
-                  <TouchableOpacity style={s.editBtn} onPress={() => setEditingTx(item)}><Text style={s.editBtnText}>✎</Text></TouchableOpacity>
-                </View>
+              {(() => {
+                const sign = item.type === "income" ? "+" : item.type === "transfer" ? "±" : "-";
+                const color = item.type === "income" ? "#34d399" : item.type === "transfer" ? C.dim : "#fff";
+                return <Text style={[s.amount, { color }]}>{sign}{fmtCLP(item.amount)}</Text>;
+              })()}
+              {isPending(item) ? (
+                <TouchableOpacity style={s.confirmBtn} onPress={() => confirmTx(item)}><Text style={s.confirmBtnText}>✓</Text></TouchableOpacity>
+              ) : (
+                <MIcon name="chevron-right" size={18} color={C.faint} />
               )}
-              {item.status === "confirmed" && (
-                <TouchableOpacity style={s.editBtn} onPress={() => setEditingTx(item)}><Text style={s.editBtnText}>✎</Text></TouchableOpacity>
-              )}
-            </View>
+            </Pressable>
           </SwipeRow>
         )}
       />
 
-      <Modal visible={!!editingTx} transparent animationType="fade" onRequestClose={() => setEditingTx(null)}>
-        <View style={s.modalOverlay}>
-          <View style={s.modal}>
-            <Text style={s.modalTitle}>Editar categoría</Text>
-            <Text style={s.modalMerchant}>{editingTx?.merchant} — {editingTx ? fmtCLP(editingTx.amount) : ""}</Text>
-            {cats.map(cat => (
-              <TouchableOpacity key={cat.id} style={s.catBtn} onPress={() => editingTx && editCategory(editingTx, cat.id)}>
-                <Text style={s.catText}>{cat.label}</Text>
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity style={[s.catBtn, { backgroundColor: C.surfaceAlt }]} onPress={() => setEditingTx(null)}>
-              <Text style={[s.catText, { color: C.dim }]}>Cancelar</Text>
+      <Sheet visible={!!editingTx} onClose={() => setEditingTx(null)} title="Categoría del movimiento">
+        {editingTx && (
+          <>
+            <View style={s.summary}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.summaryMerchant} numberOfLines={1} ellipsizeMode="tail">{toTitleCase(editingTx.merchant)}</Text>
+                <Text style={s.summaryMeta}>{fmtDate(editingTx.date)} · {fmtCLP(editingTx.amount)}</Text>
+              </View>
+              <StatusBadge status={editingTx.status} />
+            </View>
+
+            <Text style={s.hint}>Elige una categoría</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.catScroll}>
+              {cats.map(c => (
+                <TouchableOpacity
+                  key={c.id}
+                  style={[s.catChip, selectedCat === c.id && s.catChipActive]}
+                  onPress={() => setSelectedCat(c.id)}
+                >
+                  <CategoryCircle slug={c.slug} size={34} />
+                  <Text style={[s.catChipLabel, selectedCat === c.id && s.catChipLabelActive]} numberOfLines={1}>{c.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity style={s.toggleRow} onPress={() => setSavePref(p => !p)} activeOpacity={0.8}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.toggleLabel}>Guardar para este comercio</Text>
+                <Text style={s.toggleSub} numberOfLines={2}>Aplicar a futuros movimientos de "{toTitleCase(editingTx.merchant)}"</Text>
+              </View>
+              <View style={[s.switch, savePref && s.switchOn]}>
+                <View style={[s.switchThumb, savePref && s.switchThumbOn]} />
+              </View>
             </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+
+            <View style={s.btnRow}>
+              <TouchableOpacity style={[s.btn, { flex: 1, backgroundColor: C.surfaceAlt }]} onPress={() => setEditingTx(null)}>
+                <Text style={s.btnText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.btn, { flex: 1, backgroundColor: C.primary, opacity: selectedCat ? 1 : 0.5 }]} onPress={saveCategory} disabled={!selectedCat}>
+                <Text style={[s.btnText, { color: "#04121F" }]}>Guardar</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+      </Sheet>
     </View>
   );
 }
@@ -193,23 +209,32 @@ const s = StyleSheet.create({
   toast: { position: "absolute", top: 14, left: 14, right: 14, backgroundColor: C.surface, borderWidth: 1, borderColor: C.border, padding: 14, borderRadius: R.lg, zIndex: 100 },
   toastText: { color: C.text, fontWeight: "700", textAlign: "center" },
   muted: { color: C.dim, textAlign: "center", marginTop: 40 },
-  row: { backgroundColor: C.surface, padding: 14, borderRadius: 12, flexDirection: "row", alignItems: "center" },
+  row: { backgroundColor: C.surface, padding: 14, borderRadius: 12, flexDirection: "row", alignItems: "center", gap: 10, minHeight: 68 },
   rowPending: { borderLeftWidth: 3, borderLeftColor: "#f59e0b" },
-  rowHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 2 },
-  merchant: { color: C.text, fontWeight: "600" },
-  badge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-  badgeText: { color: "#fff", fontSize: 10, fontWeight: "700" },
+  center: { flex: 1, minWidth: 0, justifyContent: "center" },
+  rowHeader: { flexDirection: "row", alignItems: "center", gap: 8, minWidth: 0 },
+  merchant: { color: C.text, fontWeight: "600", flex: 1, minWidth: 0 },
   meta: { color: C.dim, fontSize: 12 },
-  amount: { fontWeight: "800", marginLeft: 8 },
-  actions: { flexDirection: "row", marginLeft: 8, gap: 4 },
+  amount: { fontWeight: "800", flexShrink: 0 },
   confirmBtn: { backgroundColor: "#10b981", width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
   confirmBtnText: { color: "#fff", fontSize: 14, fontWeight: "700" },
-  editBtn: { backgroundColor: C.surfaceAlt, width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
-  editBtnText: { color: C.primary, fontSize: 14, fontWeight: "700" },
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", alignItems: "center" },
-  modal: { backgroundColor: C.surface, padding: 20, borderRadius: R.lg, width: "88%", borderWidth: 1, borderColor: C.border },
-  modalTitle: { color: C.text, fontSize: 18, fontWeight: "800", marginBottom: 8 },
-  modalMerchant: { color: C.dim, marginBottom: 16 },
-  catBtn: { backgroundColor: C.surfaceAlt, padding: 14, borderRadius: 10, marginBottom: 6 },
-  catText: { color: C.text, fontSize: 14 },
+  summary: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: C.surfaceAlt, borderWidth: 1, borderColor: C.border, padding: 12, borderRadius: R.md },
+  summaryMerchant: { color: C.text, fontWeight: "700", fontSize: 15 },
+  summaryMeta: { color: C.dim, fontSize: 12, marginTop: 2 },
+  hint: { color: C.faint, fontSize: 11, marginTop: 8, marginBottom: 6 },
+  catScroll: { gap: 10, paddingVertical: 4, paddingRight: 16, paddingBottom: 4 },
+  catChip: { alignItems: "center", gap: 6, padding: 10, borderRadius: R.md, backgroundColor: C.surfaceAlt, borderWidth: 1, borderColor: C.border, width: 92, marginRight: 8 },
+  catChipActive: { borderColor: C.primary, backgroundColor: C.primarySoft },
+  catChipLabel: { color: C.dim, fontSize: 11, fontWeight: "600", textAlign: "center" },
+  catChipLabelActive: { color: C.primary },
+  toggleRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 14, padding: 12, borderRadius: R.md, backgroundColor: C.surfaceAlt, borderWidth: 1, borderColor: C.border },
+  toggleLabel: { color: C.text, fontWeight: "700", fontSize: 13 },
+  toggleSub: { color: C.dim, fontSize: 11, marginTop: 2 },
+  switch: { width: 46, height: 28, borderRadius: 999, backgroundColor: C.surfaceAlt, borderWidth: 1, borderColor: C.border, padding: 3, justifyContent: "center" },
+  switchOn: { backgroundColor: C.primary, borderColor: C.primary },
+  switchThumb: { width: 20, height: 20, borderRadius: 999, backgroundColor: C.dim, alignSelf: "flex-start" },
+  switchThumbOn: { alignSelf: "flex-end", backgroundColor: "#04121F" },
+  btnRow: { flexDirection: "row", gap: 10, marginTop: 16 },
+  btn: { padding: 14, borderRadius: R.md, alignItems: "center" },
+  btnText: { color: C.text, fontWeight: "700" },
 });

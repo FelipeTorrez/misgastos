@@ -1,6 +1,6 @@
 export const fixtures = [
-  { merchant: "Lider", amount: 32990, category: "supermercado", type: "expense", date: "2026-08-02" },
-  { merchant: "Jumbo", amount: 45200, category: "supermercado", type: "expense", date: "2026-08-03" },
+  { merchant: "Lider", amount: 32990, category: "alimentacion", type: "expense", date: "2026-08-02" },
+  { merchant: "Jumbo", amount: 45200, category: "alimentacion", type: "expense", date: "2026-08-03" },
   { merchant: "Uber", amount: 8900, category: "transporte", type: "expense", date: "2026-08-04" },
   { merchant: "Spotify", amount: 7490, category: "suscripciones", type: "expense", date: "2026-08-05" },
   { merchant: "Sueldo", amount: 2500000, category: "otros", type: "income", date: "2026-08-01" },

@@ -130,7 +130,7 @@ Cambios en `routes.ts:83-114`:
 - `backend/tests/ingestion.guard.test.ts` nuevo (6-8 casos):
   - `cupo 750k Banco de Chile` → `is_transaction false`, `transaction=null`
   - `oferta crédito 500k` → false
-  - `Compraste $1.300 en Angaroa` → true, expense supermercado
+  - `Compraste $1.300 en Angaroa` → true, expense alimentacion
   - `CLP1,250 con CMR` (Wallet GMS) → true, amount 1250
   - `Te transfirieron $50.000` → true, transfer/income según prompt
   - `Recibiste $10.000 de Juan` → true

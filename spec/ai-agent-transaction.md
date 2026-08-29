@@ -11,7 +11,7 @@ Extraer: amount, currency, merchant, date, account_hint, category, transaction_t
 {
   "normalized_text": "Compra por $32.990 en Lider con tarjeta terminada en 1234 - 24/08/2026 15:30",
   "parser_hints": { "amount": 32990, "date": "2026-08-24", "merchant_guess": "Lider" },
-  "categories": ["vivienda","supermercado","transporte",...],
+  "categories": ["vivienda","alimentacion","transporte",...],
   "user_rules": [{ "merchant": "spotify", "preferred_category": "suscripciones" }],
   "locale": "es-CL"
 }
@@ -25,7 +25,7 @@ Extraer: amount, currency, merchant, date, account_hint, category, transaction_t
   "amount": 32990,
   "currency": "CLP",
   "merchant": "Lider",
-  "category": "supermercado",
+  "category": "alimentacion",
   "date": "2026-08-24",
   "account_hint": "1234",
   "payment_method": "debit_card | credit_card | transfer | cash",

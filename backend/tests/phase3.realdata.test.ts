@@ -31,8 +31,8 @@ describe("#3 Real Data — fixtures Phase 2", () => {
     const spent = fixtures.filter(f=>f.type==="expense").reduce((s,f)=>s+f.amount,0);
     expect(spent).toBeLessThan(800000);
   });
-  it("presupuesto supermercado 250k: ejemplo no excedido", () => {
-    const spent = spentByCat(fixtures, "supermercado");
+  it("presupuesto alimentacion 250k: ejemplo no excedido", () => {
+    const spent = spentByCat(fixtures, "alimentacion");
     expect(spent).toBe(78190);
     expect(spent).toBeLessThan(250000);
   });

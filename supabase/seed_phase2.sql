@@ -14,7 +14,7 @@ on conflict (id) do nothing;
 -- Presupuestos demo Agosto 2026 (global + 6 categorías) — valida ADR-004
 insert into budgets (user_id, category_id, amount, month) values
 ('00000000-0000-0000-0000-000000000001', null, 1800000, '2026-08-01'), -- global
-('00000000-0000-0000-0000-000000000001', (select id from categories where slug='supermercado' limit 1), 350000, '2026-08-01'),
+('00000000-0000-0000-0000-000000000001', (select id from categories where slug='alimentacion' limit 1), 350000, '2026-08-01'),
 ('00000000-0000-0000-0000-000000000001', (select id from categories where slug='transporte' limit 1), 200000, '2026-08-01'),
 ('00000000-0000-0000-0000-000000000001', (select id from categories where slug='restaurantes' limit 1), 150000, '2026-08-01'),
 ('00000000-0000-0000-0000-000000000001', (select id from categories where slug='suscripciones' limit 1), 60000, '2026-08-01'),

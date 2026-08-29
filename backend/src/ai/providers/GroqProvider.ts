@@ -86,7 +86,7 @@ export class GroqProvider {
     // Heurística categoría por merchant (para demo sin API)
     const m = (input.parser_hints.merchant_guess ?? input.normalized_text).toLowerCase();
     let category = "otros";
-    if (/lider|jumbo|santa|unimarc|tottus/.test(m)) category = "supermercado";
+    if (/lider|jumbo|santa|unimarc|tottus/.test(m)) category = "alimentacion";
     else if (/uber|cabify|copec|shell|metro/.test(m)) category = "transporte";
     else if (/spotify|netflix|chatgpt|youtube|disney|icloud/.test(m)) category = "suscripciones";
     else if (/pedidos|rappi|starbucks|dominó|piojera|restaurant/.test(m)) category = "restaurantes";
