@@ -1,7 +1,7 @@
 # HANDOFF — Contexto completo para continuar desarrollo
 
-> Última actualización: 2026-08-29 — **Rename `supermercado`→`alimentacion`** ✅ — slug+etiqueta "Alimentación" (icono `cart` verde #4ADE80) aplicado en mobile/backend/AI/tests/fixtures + migración `005_rename_supermercado_to_alimentacion.sql` (misma fila/UUID, sin remapeo). Base: 14 categorías personales + migración prod + fix FAB, `categoryIcons.tsx`/`categoryIconsV2.ts` con 14 slugs, `ahorro` (income) separado de `transferencias` (transfer) y excluido de la IA. Health `0.3.0-phase8`.
-> Siguiente: **Redeploy backend a Railway** (+ aplicar migración `005` a prod). Ver §4 (-15) y §6 "Pendiente deploy Railway".
+> Última actualización: 2026-08-29 — **Rename `supermercado`→`alimentacion` + deploy Railway** ✅ — slug+etiqueta "Alimentación" (icono `cart` verde #4ADE80) en mobile/backend/AI/tests/fixtures. Migración `005` aplicada a prod (14 categorías, sin `supermercado`). Deploy Railway OK: health prod `<version>`, `/v1/categories` devuelve `alimentacion`, filtro `slug!=ahorro` activo (test `CLP1,250` → `ai.category=otros`). Commit `eed6c12` pusheado. Base: 14 categorías personales, `ahorro` (income) separado de `transferencias` (transfer) y excluido de la IA. Health `0.3.0-phase8`.
+> Siguiente: **Cierre verificado** — queda limpiar 2 txs de prueba prod (`deploy-verify-*`) si se desea; ver §4 (-15) y §6 "Deploy Railway".
 
 > ⚠️ Cambió la arquitectura de navegación: ahora hay un **shell persistente** (mes + balance hero + sub-tabs anidados + FAB global). Detalle abajo en §6.
 
@@ -167,8 +167,8 @@ Durante la sesión del 25/08 hubo **OTRA IA/sesión editando este mismo repo sim
 -15. **Rename `supermercado`→`alimentacion`** — 2026-08-29:
     - **Objetivo**: renombrar la categoría de supermercado a "Alimentación" manteniendo su iconografía actual (icono `cart`/`ShoppingCart`, verde #4ADE80).
     - **Alcance**: renombrar el slug en TODO el sistema (no solo la etiqueta): `mobile/src/theme/categoryIcons.tsx`, `categoryIconsV2.ts`, `lib/categories.ts`, `GaleriaUI.tsx`, `backend/src/modules/categories/routes.ts`, `modules/ingestion/routes.ts`, `ai/providers/GroqProvider.ts`, `ai/prompts/agente-financiero.ts`, tests (`phase1`, `phase2.*`, `phase3`, `phase4.*`, `phase5`, `ingestion.guard`, `agent-financiero`, `GroqProvider.test`, `budgets/logic.test`), fixtures (`tests/fixtures/{fixtures,dataset100,generate}.ts`) y `supabase/seed_phase2.sql`.
-    - **Migración** `supabase/migrations/005_rename_supermercado_to_alimentacion.sql` (aún NO aplicada a prod): `update categories set slug='alimentacion', name='Alimentación' where slug='supermercado' and is_system=true and user_id is null`. No remapea transactions/budgets/rules porque referencian `category_id` (UUID) — solo cambian slug+name de la misma fila. Idempotente.
-    - **Aplicar a prod**: `cd backend; npm run setup-supabase` (aplicará 005) ✍️ junto al redeploy Railway.
+    - **Migración** `supabase/migrations/005_rename_supermercado_to_alimentacion.sql` — ✅ **aplicada a prod** (28/08 vía `npm run setup-supabase`): `update categories set slug='alimentacion', name='Alimentación' where slug='supermercado' and is_system=true and user_id is null`. No remapea transactions/budgets/rules porque referencian `category_id` (UUID) — solo cambian slug+name de la misma fila. Idempotente.
+    - **Deploy Railway** — ✅ **completado** (push `eed6c12` → autodeploy). Verificado prod: `/v1/categories` = 14 cats con `alimentacion` (sin `supermercado`); health OK; filtro IA activo (POST `CLP1,250` → `ai.category=otros`, no `ahorro`).
     - **Dependencia**: si ya corriste `004` en prod, `supermercado` es la fila viva; 005 la renombra. Al estar `004` aplicada, `alimentacion` ya no existe → no hay conflicto de `unique(slug,user_id)`.
 
 -14. **14 categorías personales + migración producción + fix FAB** — 2026-08-29:
@@ -373,11 +373,11 @@ Durante la sesión del 25/08 hubo **OTRA IA/sesión editando este mismo repo sim
 ### Pendientes menores
 - FAB agrega solo Gasto/Ingreso (Transferencia deferida) — `FabMenu` sin Transferencia
 - `/v1/accounts` sin modo mock (irrelevante con Supabase real)
-- **Pendiente deploy Railway (categorías)**: redeployar backend a prod para activar (1) `ingestion/routes.ts` filtro `slug!=ahorro`, (2) `agente-financiero.ts` prompt "NUNCA uses ahorro", (3) `categories/routes.ts` fallback `SYSTEM_CATEGORIES` con labels nuevos. La BD prod ya está migrada (14 categorías). Sin el redeploy, la IA de prod puede clasificar ingresos como `ahorro` de forma auto (riesgo menor, solo afecta notifs nuevas).
+- ✅ **Deploy Railway (categorías) — RESUELTO** (08/29): redeploy del backend a prod activó (1) `ingestion/routes.ts` filtro `slug!=ahorro`, (2) `agente-financiero.ts` prompt "NUNCA uses ahorro", (3) `categories/routes.ts` fallback `SYSTEM_CATEGORIES` labels nuevos. BD prod ya migrada (14 categorías). Verificado prod: `POST CLP1,250` → `ai.category=otros` (no `ahorro`), `/v1/categories` = 14 con `alimentacion`.
 - **Pendiente documentado — reenvío nativo Transsion**: en Tecno Camon 40 Pro el `onNotificationPosted` no se dispara 100% nativo para terceros; workaround validado es **Reenviar notificaciones en pantalla** + reintento automático al abrir. Queda para sesión dedicada (evaluar `AccessibilityService` como fallback).
 
 ### Fase siguiente (v1 → v1.1)
-- **Hosting ya fuera de LAN** (Railway Node 22, `https://misgastos-production-b8c6.up.railway.app`). **Guard v2 pendiente deploy**: `npm run deploy` Railway + `assembleRelease` APK (gms) + re-probar Wallet `CLP1,250` vs promo `750k` ignorada.
+- **Hosting ya fuera de LAN** (Railway Node 22, `https://misgastos-production-b8c6.up.railway.app`). **Guard v2 ya deployado** (filtro `ahorro` + prompt + fallback labels OK verificados en prod). Pendiente opcional: re-probar Wallet `CLP1,250` end-to-end en device vs promo `750k` ignorada.
 - **Falabella fuera LAN ya validada** (27/08): 2 compras Angaroa ingresadas OK sin estar en LAN.
 - **v1.1**: `Phase 9 Financial Advisor` (Agente #2), `Phase 7 iOS` (share extension + PDF), `OAuth Gmail` `gmail.readonly` (restricted, verificación Google), Hardening fino (JWT `Authorization: Bearer` → `supabase.auth.getUser`, `@fastify/rate-limit`, RLS test 2 usuarios §34, `audit_log`).
 
