@@ -12,7 +12,7 @@ import { ruleRoutes } from "./modules/rules/routes.js";
 const app = Fastify({ logger: true });
 await app.register(cors, { origin: true });
 
-app.get("/health", async () => ({ status: "ok", version: "0.4.0-finan", phase: "Agente Financiero Finan" }));
+app.get("/health", async () => ({ status: "ok", version: "0.4.1-finan", phase: "Agente Financiero Finan (promo-hardening)" }));
 
 await app.register(categoryRoutes);
 await app.register(accountRoutes);

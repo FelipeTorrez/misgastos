@@ -112,4 +112,39 @@ describe("SDD Notification Guard — parser CLP + allowlist + IA guard", ()=>{
     expect(j.classification_source).toBe("no_amount");
     expect(j.next).toContain("no amount");
   });
+
+  it("POST publicidad Travel Days / Dólares-Premio → transaction null (guard bloquea)", async ()=>{
+    const res = await app.inject({ method:"POST", url:"/v1/ingestion/notification", payload:{
+      raw_content:"¡Despegó Travel Days! Descubre ofertas imperdibles en Travel Viajes, canjea tus Dólares-Premio por hasta $1.000.000 y paga tus próximas vacaciones",
+      sender:"cl.bancochile", subject:"Oferta Travel", external_id:"notif-traveldays-promo"
+    }});
+    const j = JSON.parse(res.body);
+    expect(j.transaction).toBeNull();
+    expect(j.classification_source).toBe("ai_guard");
+    expect(j.ai.is_transaction).toBe(false);
+    expect(j.ignored_reason).toContain("promo");
+  });
+
+  it("POST sorteo 'participa y gana hasta $500.000' → transaction null", async ()=>{
+    const res = await app.inject({ method:"POST", url:"/v1/ingestion/notification", payload:{
+      raw_content:"Participa y gana hasta $500.000 en el sorteo de este mes. Solo por ser cliente.",
+      sender:"cl.bancochile", subject:"Sorteo", external_id:"notif-sorteo-500k"
+    }});
+    const j = JSON.parse(res.body);
+    expect(j.transaction).toBeNull();
+    expect(j.classification_source).toBe("ai_guard");
+    expect(j.ai.is_transaction).toBe(false);
+  });
+
+  it("POST compra real en Travel Viajes → expense 120000 (borde positivo)", async ()=>{
+    const res = await app.inject({ method:"POST", url:"/v1/ingestion/notification", payload:{
+      raw_content:"Compraste $120.000 en Travel Viajes con tu tarjeta de crédito",
+      sender:"cl.bancochile", subject:"Compra", external_id:"notif-travel-compra-120k"
+    }});
+    const j = JSON.parse(res.body);
+    expect(j.transaction).toBeDefined();
+    expect(j.transaction.amount).toBe(120000);
+    expect(j.transaction.type).toBe("expense");
+    expect(j.classification_source).not.toBe("ai_guard");
+  });
 });

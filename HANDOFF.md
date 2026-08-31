@@ -1,6 +1,6 @@
 # HANDOFF — Contexto completo para continuar desarrollo
 
-> Última actualización: 2026-08-31 — **Fix borde de mes en `/v1/transactions` + fecha local en gasto manual + deploy Railway** ✅ — `149/149` tests (19 files), `tsc --noEmit` 0, build backend OK. Fix: `transactions/routes.ts:34` unifica el borde de mes (`< 1ro del mes siguiente`) para incluir los gastos del día 31 (antes `date < YYYY-MM-31` excluía todo el 31); `AddMoveModal.tsx:40` ancla la fecha a mediodía UTC del día local (Chile UTC-4); `App.tsx:39` mes inicial local en vez de UTC. Commit `1daad0c` pusheado → Railway autodeploy. Verificado prod: `/v1/transactions?month=2026-08` = 46 (incluye los del 31/08; antes 41). Health `0.4.0-finan`. Ver §4 (-16).
+> Última actualización: 2026-08-31 — **Endurecimiento de Finan contra publicidad bancaria (promo-hardening)** ✅ — `157/157` tests (19 files), `tsc --noEmit` 0. `FINAN_SYSTEM_PROMPT` amplía el bloque `is_transaction=false` con la taxonomía Publicidad/Marketing (lealtad/canje, sorteo/premio, oferta/CTA, informativo) + reglas anti-ancla y de moneda de lealtad (Dólares-Premio/puntos/millas ≠ CLP) + 4 few-shot nuevos (Travel Days/Dólares-Premio, sorteo $500.000, descuento, y contraejemplo "Compraste $120.000 en Travel Viajes"→expense). `GroqProvider.mock()` replica el regex. Version `0.4.1-finan`. Ver §4 (-17).
 > Siguiente: **Cierre verificado OK** — quedó una app que apunta a Railway (`https://misgastos-production-b8c6.up.railway.app`); APK release instalado con el fix de front. Pendiente opcional: normalizar a mediodía los `date` de los gastos ya creados por ingesta (ver §4 -16) y evaluar `.limit(100)` si un mes supera 100 movimientos.
 
 > ⚠️ Cambió la arquitectura de navegación: ahora hay un **shell persistente** (mes + balance hero + sub-tabs anidados + FAB global). Detalle abajo en §6.
@@ -21,7 +21,7 @@
 | Backend | Node.js + Fastify + tsx (watch) + Node 22 en Railway (prod), Zod para validación |
 | DB | Supabase (Postgres + RLS) — **conectada en cloud (proyecto bqnktrfwoxetbirrodmo), modo real activo** |
 | AI | Groq API (`qwen/qwen3.8-27b` actual, antes `llama-3.1-70b`) con fallback mock — **Groq real activo** |
-| Tests | Vitest — **149/149 passing** (19 files) · `mobile: tsc --noEmit` **0 errores** · `tests/ingestion.guard.test.ts` + `tests/agent-financiero.test.ts` |
+| Tests | Vitest — **157/157 passing** (19 files) · `mobile: tsc --noEmit` **0 errores** · `tests/ingestion.guard.test.ts` + `tests/agent-financiero.test.ts` |
 
 ### Estado de fases
 - ✅ Phase 0: Spec + ADRs 001–007 (`spec/`, `docs/decisions/`)
@@ -123,7 +123,7 @@ Sin `GROQ_API_KEY` → `mock()`:
 - confidence: 0.88 conocido / 0.5 desconocido; needs_review acorde
 Prompt system: `Transaction Intelligence + Guard` con few-shot promo vs compra real, CLP1,250=1250.
 
-### Rutas backend (version 0.4.0-finan, puerto 3000)
+### Rutas backend (version 0.4.1-finan, puerto 3000)
 | Ruta | Método | Notas mock mode |
 |------|--------|-----------------|
 | `/v1/rules` | GET/POST | mockStore directo; POST upsert por `(user_id, merchant_normalized)` |
@@ -131,7 +131,7 @@ Prompt system: `Transaction Intelligence + Guard` con few-shot promo vs compra r
 | `/v1/transactions` | GET/POST/PATCH/DELETE | PATCH corrige categoría → auto-crea/actualiza regla (aprendizaje UX §19) |
 | `/v1/ingestion/email` | POST | flujo completo arriba |
 | `/v1/ingestion/notification` | POST | igual con source=android_notification |
-| `/health` | GET | `{"status":"ok","version":"0.4.0-finan","phase":"Agente Financiero Finan"}` |
+| `/health` | GET | `{"status":"ok","version":"0.4.1-finan","phase":"Agente Financiero Finan (promo-hardening)"}` |
 
 ### Mobile
 - `mobile/App.tsx`: **shell persistente** (ver §6) — header global (logo, chip 🤖IA agrandado, cog→Sheet "Más" con Reglas/Config/(dev)Probar/Galería) + MonthPager global + hero "Total Gastos" + chip filtro + sub-tabs + FAB `FabMenu` Gasto/Ingreso + `filterCategory`/`month`/`subTab`/`secondary` + `AppState` resend cada 30s
@@ -163,6 +163,13 @@ Durante la sesión del 25/08 hubo **OTRA IA/sesión editando este mismo repo sim
 ---
 
 ## 4. Cambios de la última sesión (lo más reciente primero)
+
+-17. **Endurecimiento de Finan contra publicidad bancaria (promo-hardening)** — 2026-08-31 — `backend/src/ai/prompts/agente-financiero.ts`, `backend/src/ai/providers/GroqProvider.ts`, `backend/tests/agent-financiero.test.ts`, `backend/tests/ingestion.guard.test.ts`, `backend/src/index.ts` (+ `spec/sdd-financial-promo-hardening.md`):
+    - **Problema**: anuncios bancarios como `"¡Despegó Travel Days! … canjea tus Dólares-Premio"` y `"Participa y gana hasta $500.000 …"` se ingerían como **gastos fantasma** (`-$1.000.000` / `-$500.000`). El parser extrae la cifra (`$500.000`→500000) y el prompt anclaba `amount` a `parser_hints` → la IA lo trataba como movimiento real.
+    - **Fix prompt** (`agente-financiero.ts`): PASO 1 expande el bloque `is_transaction=false` con la taxonomía **Publicidad / Marketing** (lealtad/canje: `canjea`/`Dólares-Premio`/puntos/millas; sorteo: `participa y gana`/`concurso`/`hasta $X`; oferta: `descuento`/`beneficio`/CTA; informativo). Nuevas **REGLA ANTI-ANCLA** (`parser_hints.amount` es pista, no prueba) y **REGLA DE MONEDA DE LEALTAD** (Dólares-Premio/puntos/millas ≠ CLP). PASO 3 ya no ancla `amount` a `parser_hints` a ciegas. +4 few-shot (Travel Days/Dólares-Premio→false, sorteo $500.000→false, 50% descuento→false, y contraejemplo `"Compraste $120.000 en Travel Viajes"`→expense para no sobre-bloquear "travel").
+    - **Fix mock** (`GroqProvider.ts`): `isPromoPattern` replica las señales (`canjea`, `d[oó]lares[ -]?premio`, `travel days`, `ofertas imperdibles`, `sorteo`, `participa y gana`, `hasta $X`, `descuento`, `premio`, `beneficio`, `acumula`, `millas`, `puntos`) **manteniendo** `hasRealConsumptionVerb` para no bloquear compras reales.
+    - **Verificación**: `vitest 157/157 (19 files)` (+8 tests), `tsc --noEmit` 0. Version `index.ts:15` → `0.4.1-finan`.
+    - **Nota**: sin cambio de schema (`AgentOutputSchema`) ni de `routes.ts`; el guard sigue siendo el único punto de bloqueo (`is_transaction===false`). Pre-guard determinista pre-Groq queda como hardening futuro (ahorro de costo).
 
 -16. **Fix borde de mes en `/v1/transactions` + fecha local en gasto manual + deploy Railway** — 2026-08-31 — `backend/src/modules/transactions/routes.ts:34`, `mobile/src/components/ui/AddMoveModal.tsx:40`, `mobile/App.tsx:39`:
     - **Problema**: el usuario veía un total de gastos ($946.226, luego $1.956.226) mayor que la suma de los movimientos listados. Los gastos del **31/08** (p.ej. el $500.000 en `otros` + un $1.000.000 recién agregado) no aparecían en Movimientos, pero sí sumaban al balance y a la distribución por categoría. No era un límite (solo 45/46 registros/mes): era el **borde de mes**.

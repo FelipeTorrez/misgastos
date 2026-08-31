@@ -58,6 +58,14 @@ describe("SDD Agente Financiero — Finan (direction + veredicto)", ()=>{
       expect(FINAN_SYSTEM_PROMPT).toContain("Mensaje promocional");
       expect(FINAN_SYSTEM_PROMPT).toContain("transaction_type");
     });
+    it("contiene señales de publicidad bancaria (promo-hardening)", ()=>{
+      expect(FINAN_SYSTEM_PROMPT).toContain("canjea");
+      expect(FINAN_SYSTEM_PROMPT).toContain("Dólares-Premio");
+      expect(FINAN_SYSTEM_PROMPT).toContain("sorteo");
+      expect(FINAN_SYSTEM_PROMPT).toContain("REGLA ANTI-ANCLA");
+      expect(FINAN_SYSTEM_PROMPT).toContain("moneda de fidelización");
+      expect(FINAN_SYSTEM_PROMPT).toContain("Publicidad / Marketing");
+    });
   });
 
   describe("mock classify — dirección financiera", ()=>{
@@ -135,6 +143,55 @@ describe("SDD Agente Financiero — Finan (direction + veredicto)", ()=>{
       );
       expect(out.transaction_type).toBe("income");
       expect(out.direction).toBe("in");
+    });
+
+    it("publicidad Travel Days / Dólares-Premio → is_transaction false amount 0", async ()=>{
+      const prov = new GroqProvider() as any;
+      const out = await prov.mock(
+        { normalized_text: "¡despegó travel days! descubre ofertas imperdibles en travel viajes, canjea tus dólares-premio y paga tus próximas vacaciones", parser_hints:{ amount:1000000 }, categories:["otros"], user_rules:[], locale:"es-CL" },
+        "test"
+      );
+      expect(out.is_transaction).toBe(false);
+      expect(out.transaction_type).toBe("none");
+      expect(out.direction).toBe("none");
+      expect(out.amount).toBe(0);
+      expect(out.reason).toContain("promo");
+    });
+
+    it("sorteo 'participa y gana hasta $500.000' → is_transaction false amount 0", async ()=>{
+      const prov = new GroqProvider() as any;
+      const out = await prov.mock(
+        { normalized_text: "participa y gana hasta $500.000 en el sorteo de este mes", parser_hints:{ amount:500000 }, categories:["otros"], user_rules:[], locale:"es-CL" },
+        "test"
+      );
+      expect(out.is_transaction).toBe(false);
+      expect(out.transaction_type).toBe("none");
+      expect(out.amount).toBe(0);
+      expect(out.reason).toContain("promo");
+    });
+
+    it("descuento '50% en tu próximo viaje' → is_transaction false", async ()=>{
+      const prov = new GroqProvider() as any;
+      const out = await prov.mock(
+        { normalized_text: "obtén 50% de descuento en tu próximo viaje con tu tarjeta", parser_hints:{}, categories:["otros"], user_rules:[], locale:"es-CL" },
+        "test"
+      );
+      expect(out.is_transaction).toBe(false);
+      expect(out.transaction_type).toBe("none");
+      expect(out.amount).toBe(0);
+    });
+
+    it("Compraste $120.000 en Travel Viajes → expense (borde positivo)", async ()=>{
+      const prov = new GroqProvider() as any;
+      const out = await prov.mock(
+        { normalized_text: "compraste $120.000 en travel viajes con tu tarjeta de crédito", parser_hints:{ amount:120000, merchant_guess:"Travel Viajes" }, categories:["otros"], user_rules:[], locale:"es-CL" },
+        "test"
+      );
+      expect(out.is_transaction).toBe(true);
+      expect(out.transaction_type).toBe("expense");
+      expect(out.direction).toBe("out");
+      expect(out.amount).toBe(120000);
+      expect(out.reason).toContain("gasto");
     });
   });
 

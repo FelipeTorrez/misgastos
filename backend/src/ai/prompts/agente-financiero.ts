@@ -12,13 +12,29 @@ Nunca inventes datos que el texto no diga.
 PASO 1 — ¿Es una transacción real? (is_transaction)
 - true  → hubo movimiento REAL de dinero (compra, pago, giro, retiro, transferencia,
            abono, depósito, sueldo, devolución) con monto ejecutado y verbo de movimiento ("compraste", "pagaste", "te transfirieron", "transferiste").
-- false → oferta, promo, cupo aprobado/preaprobado, simulación, recordatorio, publicidad,
-           cuotas sin interés, permiso de circulación, "últimos días", "días baratísimos",
-           "doble acumulación" o alerta informativa SIN consumo. Entonces: transaction_type="none",
-           direction="none", amount=0, needs_review=false, confidence=0.95,
-           reason="Mensaje promocional o informativo, no hay consumo".
-- Si es false, ignora cualquier monto o número que aparezca (ej "3 o 6 cuotas" NO es $3).
-- Señales promo: "paga tu permiso en 3 o 6 cuotas", "últimos días", "cuotas sin interés", "días baratísimos", "continúan los mejores dtos".
+- false → Publicidad / Marketing o mensaje informativo SIN consumo. Señales típicas de banca chilena:
+           · Lealtad/canje (moneda de fidelización): canjea, canje, canjear, Dólares-Premio,
+             dólares turísticos, puntos, millas, kilómetros, acumula, doble/triple acumulación.
+           · Sorteo/concurso: sorteo, concurso, "participa y gana", "podrías ganar", "gana hasta", premio.
+           · Oferta/descuento: oferta, "ofertas imperdibles", descuento, dto, "hasta 50%", beneficio,
+             bonificación, rebaja, promo, promoción, "cuotas sin interés".
+           · CTA/engagement: descubre, despegó, imperdible, conoce, invita, súmate, aprovecha,
+             "últimos días", "no te lo pierdas", "solo por hoy".
+           · Informativo/límite: recordatorio, aviso, "te informamos", "ahora puedes", disponible,
+             cupo aprobado/preaprobado, simulación, permiso de circulación, "días baratísimos".
+           Entonces: transaction_type="none", direction="none", amount=0, needs_review=false,
+           confidence=0.95, reason="Mensaje promocional o informativo, no hay consumo".
+- Si es false, ignora cualquier monto o número que aparezca (ej "3 o 6 cuotas" NO es $3; "hasta $500.000" NO es gasto).
+
+REGLA ANTI-ANCLA: parser_hints.amount es SOLO una pista extraída por regex; NO prueba que hubo un
+movimiento. Lo que prueba un movimiento es un VERBO de consumo/transferencia + contexto ("compraste",
+"pagaste", "transferiste", "te transfirieron"). Un monto grande y redondo ($500.000, $1.000.000,
+"hasta $X") presentado como beneficio, premio, oferta, canje, cupo o sorteo NO es un movimiento
+ejecutado → is_transaction=false y amount=0.
+
+REGLA DE MONEDA DE LEALTAD: "Dólares-Premio", "dólares turísticos", "puntos", "millas" y "kilómetros"
+son moneda de fidelización, NO CLP. Aunque tengan un número, no son un movimiento de dinero real
+(is_transaction=false). Solo un monto en $/CLP ligado a un verbo de consumo es dinero real.
 
 PASO 2 — Dirección del dinero (direction): el campo que define el signo.
 - "in"  (entra): recibiste / te transfirieron / te han transferido / abono / depósito /
@@ -33,7 +49,8 @@ PASO 2 — Dirección del dinero (direction): el campo que define el signo.
 
 PASO 3 — Extrae campos (solo si is_transaction=true):
 - amount: CLP entero sin separadores de miles. "CLP1,250"=1250, "$1.300"=1300, "$21.700"=21700.
-  Debe coincidir con el texto o con parser_hints.
+   Debe coincidir con el texto; usa parser_hints.amount SOLO si el verbo confirma un movimiento real
+   (ver REGLA ANTI-ANCLA).
 - merchant: UNA marca/comercio en Title Case, máx 2 palabras, sin preposiciones ni sufijos.
   Para transferencias entre personas usa "Transferencia" aquí y la persona en counterparty.
 - counterparty: persona o entidad del otro lado (ej "Juan Pérez", "familia"). null si no es
@@ -93,6 +110,26 @@ Ejemplos (few-shot):
        "merchant":"Desconocido","counterparty":null,"category":"otros",
        "payment_method":"unknown","needs_review":false,"confidence":0.95,
        "reason":"Mensaje promocional o informativo, no hay consumo"}
+8) "¡Despegó Travel Days! Descubre ofertas imperdibles en Travel Viajes, canjea tus Dólares-Premio y paga tus próximas vacaciones"
+    → {"is_transaction":false,"transaction_type":"none","direction":"none","amount":0,
+       "merchant":"Desconocido","counterparty":null,"category":"otros",
+       "payment_method":"unknown","needs_review":false,"confidence":0.95,
+       "reason":"Publicidad de canje de Dólares-Premio, no hay consumo"}
+9) "Participa y gana hasta $500.000 en el sorteo de este mes. Solo por ser cliente."
+    → {"is_transaction":false,"transaction_type":"none","direction":"none","amount":0,
+       "merchant":"Desconocido","counterparty":null,"category":"otros",
+       "payment_method":"unknown","needs_review":false,"confidence":0.95,
+       "reason":"Mensaje promocional o informativo, no hay consumo"}
+10) "Obtén 50% de descuento en tu próximo viaje con tu tarjeta de crédito"
+    → {"is_transaction":false,"transaction_type":"none","direction":"none","amount":0,
+       "merchant":"Desconocido","counterparty":null,"category":"otros",
+       "payment_method":"unknown","needs_review":false,"confidence":0.95,
+       "reason":"Mensaje promocional o informativo, no hay consumo"}
+11) "Compraste $120.000 en Travel Viajes con tu tarjeta de crédito"
+    → {"is_transaction":true,"transaction_type":"expense","direction":"out","amount":120000,
+       "merchant":"Travel Viajes","counterparty":null,"category":"otros",
+       "payment_method":"credit_card","needs_review":false,"confidence":0.9,
+       "reason":"Compra con tarjeta → gasto"}
  `;
 
 // Señales para inferencia determinista (usadas por mock y métrica de tests)
