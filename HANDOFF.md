@@ -1,7 +1,7 @@
 # HANDOFF — Contexto completo para continuar desarrollo
 
-> Última actualización: 2026-08-29 — **Rename `supermercado`→`alimentacion` + deploy Railway** ✅ — slug+etiqueta "Alimentación" (icono `cart` verde #4ADE80) en mobile/backend/AI/tests/fixtures. Migración `005` aplicada a prod (14 categorías, sin `supermercado`). Deploy Railway OK: health prod `<version>`, `/v1/categories` devuelve `alimentacion`, filtro `slug!=ahorro` activo (test `CLP1,250` → `ai.category=otros`). Commit `eed6c12` pusheado. Base: 14 categorías personales, `ahorro` (income) separado de `transferencias` (transfer) y excluido de la IA. Health `0.3.0-phase8`.
-> Siguiente: **Cierre verificado** — queda limpiar 2 txs de prueba prod (`deploy-verify-*`) si se desea; ver §4 (-15) y §6 "Deploy Railway".
+> Última actualización: 2026-08-31 — **Fix borde de mes en `/v1/transactions` + fecha local en gasto manual + deploy Railway** ✅ — `149/149` tests (19 files), `tsc --noEmit` 0, build backend OK. Fix: `transactions/routes.ts:34` unifica el borde de mes (`< 1ro del mes siguiente`) para incluir los gastos del día 31 (antes `date < YYYY-MM-31` excluía todo el 31); `AddMoveModal.tsx:40` ancla la fecha a mediodía UTC del día local (Chile UTC-4); `App.tsx:39` mes inicial local en vez de UTC. Commit `1daad0c` pusheado → Railway autodeploy. Verificado prod: `/v1/transactions?month=2026-08` = 46 (incluye los del 31/08; antes 41). Health `0.4.0-finan`. Ver §4 (-16).
+> Siguiente: **Cierre verificado OK** — quedó una app que apunta a Railway (`https://misgastos-production-b8c6.up.railway.app`); APK release instalado con el fix de front. Pendiente opcional: normalizar a mediodía los `date` de los gastos ya creados por ingesta (ver §4 -16) y evaluar `.limit(100)` si un mes supera 100 movimientos.
 
 > ⚠️ Cambió la arquitectura de navegación: ahora hay un **shell persistente** (mes + balance hero + sub-tabs anidados + FAB global). Detalle abajo en §6.
 
@@ -123,7 +123,7 @@ Sin `GROQ_API_KEY` → `mock()`:
 - confidence: 0.88 conocido / 0.5 desconocido; needs_review acorde
 Prompt system: `Transaction Intelligence + Guard` con few-shot promo vs compra real, CLP1,250=1250.
 
-### Rutas backend (version 0.3.0-phase8, puerto 3000)
+### Rutas backend (version 0.4.0-finan, puerto 3000)
 | Ruta | Método | Notas mock mode |
 |------|--------|-----------------|
 | `/v1/rules` | GET/POST | mockStore directo; POST upsert por `(user_id, merchant_normalized)` |
@@ -131,7 +131,7 @@ Prompt system: `Transaction Intelligence + Guard` con few-shot promo vs compra r
 | `/v1/transactions` | GET/POST/PATCH/DELETE | PATCH corrige categoría → auto-crea/actualiza regla (aprendizaje UX §19) |
 | `/v1/ingestion/email` | POST | flujo completo arriba |
 | `/v1/ingestion/notification` | POST | igual con source=android_notification |
-| `/health` | GET | `{"status":"ok","version":"0.3.0-phase8","phase":"Personal Rules"}` |
+| `/health` | GET | `{"status":"ok","version":"0.4.0-finan","phase":"Agente Financiero Finan"}` |
 
 ### Mobile
 - `mobile/App.tsx`: **shell persistente** (ver §6) — header global (logo, chip 🤖IA agrandado, cog→Sheet "Más" con Reglas/Config/(dev)Probar/Galería) + MonthPager global + hero "Total Gastos" + chip filtro + sub-tabs + FAB `FabMenu` Gasto/Ingreso + `filterCategory`/`month`/`subTab`/`secondary` + `AppState` resend cada 30s
@@ -163,6 +163,14 @@ Durante la sesión del 25/08 hubo **OTRA IA/sesión editando este mismo repo sim
 ---
 
 ## 4. Cambios de la última sesión (lo más reciente primero)
+
+-16. **Fix borde de mes en `/v1/transactions` + fecha local en gasto manual + deploy Railway** — 2026-08-31 — `backend/src/modules/transactions/routes.ts:34`, `mobile/src/components/ui/AddMoveModal.tsx:40`, `mobile/App.tsx:39`:
+    - **Problema**: el usuario veía un total de gastos ($946.226, luego $1.956.226) mayor que la suma de los movimientos listados. Los gastos del **31/08** (p.ej. el $500.000 en `otros` + un $1.000.000 recién agregado) no aparecían en Movimientos, pero sí sumaban al balance y a la distribución por categoría. No era un límite (solo 45/46 registros/mes): era el **borde de mes**.
+    - **Causa**: `GET /v1/transactions` filtraba con `date < "YYYY-MM-31"`. Como la columna `date` es `timestamptz`, `lt "2026-08-31"` = `< 31-08 00:00` → **excluía todo el día 31** (y rompía en meses con <31 días). `/v1/balance` sí usaba el borde correcto (`< 1ro del mes siguiente`) → por eso el total y la distribución sumaban los gastos del 31 y el listado no.
+    - **Fix borde de mes**: `transactions/routes.ts:34` calcula el límite exclusivo como el **1er día del mes siguiente** (`new Date(start).setMonth(+1)`), igual que `/v1/balance`. Verificado en prod: antes 41 filas, después 46 (incluye los del 31/08).
+    - **Fix zona horaria (latente)**: `AddMoveModal.tsx:40` guardaba `date: new Date().toISOString()` (UTC real). Con Chile a UTC-4, entre 20:00–24:00 el `toISOString()` caía al día siguiente → un "gasto de hoy" se atribuía al mes siguiente. Ahora normaliza a **mediodía UTC del día local** (`${localDate}T12:00:00Z`), igual que la ingesta (`ingestion/routes.ts:251`). `App.tsx:39` además toma el mes inicial con `getFullYear/getMonth` (local) en vez de `toISOString().slice(0,7)` (UTC).
+    - **Verificación**: `vitest 149/149 (19 files)`, `tsc --noEmit` 0 errores, `tsc` build backend OK, `/health` local + prod `0.4.0-finan`. APK release reconstruido (hubo que forzar `createBundleReleaseJsAndAssets` + borrar `app-release.apk` por up-to-date de Gradle) + `adb install -r` Success. Commit `1daad0c` → push main → **Railway autodeploy OK**: `https://misgastos-production-b8c6.up.railway.app/v1/transactions?month=2026-08` devuelve 46 con los del 31/08, y el gasto agregado manualmente ("hoy", 31/08) ya se ve.
+    - **Nota**: quedó el `.limit(100)` (con 46/mes no se alcanza; evaluar paginación si algún mes supera 100). Pendiente opcional: normalizar a mediodía los `date` de los gastos creados por ingesta con hora real.
 
 -15. **Rename `supermercado`→`alimentacion`** — 2026-08-29:
     - **Objetivo**: renombrar la categoría de supermercado a "Alimentación" manteniendo su iconografía actual (icono `cart`/`ShoppingCart`, verde #4ADE80).
@@ -423,7 +431,7 @@ PLAN-dev-client-fix.md                        → análisis root cause native mo
 Invoke-RestMethod http://localhost:3000/health
 
 # 2. Tests verdes?
-powershell -ExecutionPolicy Bypass -Command "cd backend; npx vitest run"    # esperar: 18 files, 134 tests passed (incluye ingestion.guard)
+powershell -ExecutionPolicy Bypass -Command "cd backend; npx vitest run"    # esperar: 19 files, 149 tests passed (incluye ingestion.guard + agent-financiero)
 
 # 3. Flujo reglas funciona?
 Invoke-RestMethod -Uri http://localhost:3000/v1/rules -Method POST -Headers @{"Content-Type"="application/json"} -Body '{"merchant_normalized":"test","preferred_category_id":"00000000-0000-0000-0000-000000000001"}'
