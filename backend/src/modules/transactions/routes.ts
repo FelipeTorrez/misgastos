@@ -31,7 +31,11 @@ export async function transactionRoutes(app: FastifyInstance) {
     const { month, category_id, account_id } = req.query ?? {};
     if (isMockMode) return mockStore.listTransactions(userId, { month, category_id, account_id });
     let q = supabase.from("transactions").select("*").eq("user_id", userId).order("date", { ascending: false }).limit(100);
-    if (month) q = q.gte("date", `${month}-01`).lt("date", `${month}-31`);
+    if (month) {
+      const start = `${month}-01`;
+      const end = new Date(new Date(start).setMonth(new Date(start).getMonth() + 1)).toISOString().slice(0, 10);
+      q = q.gte("date", start).lt("date", end);
+    }
     if (category_id) q = q.eq("category_id", category_id);
     if (account_id) q = q.eq("account_id", account_id);
     const { data } = await q;

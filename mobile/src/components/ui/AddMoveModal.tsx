@@ -34,10 +34,12 @@ export function AddMoveModal({ visible, onClose, cats, onAdded, initialType = "e
     const amt = parseInt(amount.replace(/\D/g, ""), 10);
     if (!merchant.trim() || !amt) { notify("Completa comercio y monto"); return; }
     try {
+      const now = new Date();
+      const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
       const res = await fetch(`${API_URL}/v1/transactions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ merchant: merchant.trim(), amount: amt, type, category_id: cat, date: new Date().toISOString() }),
+        body: JSON.stringify({ merchant: merchant.trim(), amount: amt, type, category_id: cat, date: `${localDate}T12:00:00Z` }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));

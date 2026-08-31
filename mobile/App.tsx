@@ -36,7 +36,7 @@ const secondaryMap: Record<string, any> = {
 };
 
 export default function App() {
-  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [month, setMonth] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; });
   const [subTab, setSubTab] = useState<SubTab>("categorias");
   const [secondary, setSecondary] = useState<string | null>(null);
   const [devMode, setDevMode] = useState(true);
