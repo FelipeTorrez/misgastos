@@ -1,7 +1,7 @@
 # HANDOFF — Contexto completo para continuar desarrollo
 
-> Última actualización: 2026-08-31 — **Endurecimiento de Finan contra publicidad bancaria (promo-hardening)** ✅ — `157/157` tests (19 files), `tsc --noEmit` 0. `FINAN_SYSTEM_PROMPT` amplía el bloque `is_transaction=false` con la taxonomía Publicidad/Marketing (lealtad/canje, sorteo/premio, oferta/CTA, informativo) + reglas anti-ancla y de moneda de lealtad (Dólares-Premio/puntos/millas ≠ CLP) + 4 few-shot nuevos (Travel Days/Dólares-Premio, sorteo $500.000, descuento, y contraejemplo "Compraste $120.000 en Travel Viajes"→expense). `GroqProvider.mock()` replica el regex. Version `0.4.1-finan`. Ver §4 (-17).
-> Siguiente: **Cierre verificado OK** — quedó una app que apunta a Railway (`https://misgastos-production-b8c6.up.railway.app`); APK release instalado con el fix de front. Pendiente opcional: normalizar a mediodía los `date` de los gastos ya creados por ingesta (ver §4 -16) y evaluar `.limit(100)` si un mes supera 100 movimientos.
+> Última actualización: 2026-09-03 — **Filtro de ciclo de facturación (20→20) + rango de fechas custom** ✅ — `171/171` tests (22 files), `tsc --noEmit` 0. Nueva tabla `user_settings` (migración 006 aplicada a prod) + `GET/PUT /v1/settings`; `balance`/`transactions`/`budgets` aceptan `from`/`to` (inclusive) con **presupuestos prorrateados por días**; `PeriodPager` (chevrons mueven por ciclo 20→20), `DateRangePicker` (calendario custom, sin deps nativas), `CyclePrompt` (prompt al primer uso). Version `0.4.1-finan`. Ver §4 (-18).
+> Siguiente: **Cierre verificado OK** — quedó una app que apunta a Railway (`https://misgastos-production-b8c6.up.railway.app`); APK release instalado con el fix de front. **Nuevo (2026-09-03)**: feature ciclo de facturación implementada (web/back) + migración 006 aplicada a prod — **pendiente push a main → Railway autodeploy** para exponer `GET/PUT /v1/settings` + `from`/`to` en balance/transactions/budgets. Pendiente opcional: normalizar a mediodía los `date` de los gastos ya creados por ingesta (ver §4 -16) y evaluar `.limit(100)` si un mes supera 100 movimientos.
 
 > ⚠️ Cambió la arquitectura de navegación: ahora hay un **shell persistente** (mes + balance hero + sub-tabs anidados + FAB global). Detalle abajo en §6.
 
@@ -21,7 +21,7 @@
 | Backend | Node.js + Fastify + tsx (watch) + Node 22 en Railway (prod), Zod para validación |
 | DB | Supabase (Postgres + RLS) — **conectada en cloud (proyecto bqnktrfwoxetbirrodmo), modo real activo** |
 | AI | Groq API (`qwen/qwen3.8-27b` actual, antes `llama-3.1-70b`) con fallback mock — **Groq real activo** |
-| Tests | Vitest — **157/157 passing** (19 files) · `mobile: tsc --noEmit` **0 errores** · `tests/ingestion.guard.test.ts` + `tests/agent-financiero.test.ts` |
+| Tests | Vitest — **171/171 passing** (22 files) · `mobile: tsc --noEmit` **0 errores** · `tests/ingestion.guard.test.ts` + `tests/agent-financiero.test.ts` + `src/modules/{settings,ranges}` |
 
 ### Estado de fases
 - ✅ Phase 0: Spec + ADRs 001–007 (`spec/`, `docs/decisions/`)
@@ -96,8 +96,8 @@ export const isMockMode = !process.env.SUPABASE_URL || process.env.SUPABASE_URL 
 
 ### mockStore (`backend/src/lib/mockStore.ts`)
 Store **persistido a disco** (`backend/.mockstore.json`) + memoria:
-- `rules[]`, `transactions[]`, `budgets[]`, `rawEvents{}` (para idempotencia)
-- Métodos: list/find/upsert/update/delete/incrementHits + `_persist()` tras cada mutación; `reset()`; loadFromDisk() al arrancar (skip en NODE_ENV=test)
+- `rules[]`, `transactions[]`, `budgets[]`, `rawEvents{}` (para idempotencia), `settings{}` (config ciclo facturación por `user_id`)
+- Métodos: list/find/upsert/update/delete/incrementHits + `_persist()` tras cada mutación; `reset()`; loadFromDisk() al arrancar (skip en NODE_ENV=test). `listTransactions` soporta filtro `from`/`to` (además de `month`/`category_id`/`account_id`/`limit`).
 
 ### Flujo de ingesta (Guard IA) — `backend/src/modules/ingestion/routes.ts` + `spec/sdd-notification-guard.md`
 ```
@@ -131,14 +131,18 @@ Prompt system: `Transaction Intelligence + Guard` con few-shot promo vs compra r
 | `/v1/transactions` | GET/POST/PATCH/DELETE | PATCH corrige categoría → auto-crea/actualiza regla (aprendizaje UX §19) |
 | `/v1/ingestion/email` | POST | flujo completo arriba |
 | `/v1/ingestion/notification` | POST | igual con source=android_notification |
+| `/v1/settings` | GET/PUT | config ciclo de facturación (`user_settings`: `billing_cycle_day` 1-28, `billing_cycle_enabled` null/false/true) |
 | `/health` | GET | `{"status":"ok","version":"0.4.1-finan","phase":"Agente Financiero Finan (promo-hardening)"}` |
 
+> Filtro por rango: `GET /v1/balance|transactions|budgets` aceptan `from`/`to` (ISO `YYYY-MM-DD`, inclusive) como alternativa a `month`. `budgets` prorratea montos por día de solape; `transactions` acepta `limit` (máx 500). Ver `lib/dateRange.ts`.
+
 ### Mobile
-- `mobile/App.tsx`: **shell persistente** (ver §6) — header global (logo, chip 🤖IA agrandado, cog→Sheet "Más" con Reglas/Config/(dev)Probar/Galería) + MonthPager global + hero "Total Gastos" + chip filtro + sub-tabs + FAB `FabMenu` Gasto/Ingreso + `filterCategory`/`month`/`subTab`/`secondary` + `AppState` resend cada 30s
-- `mobile/src/lib/useShellData.ts`: **fuente única** — en paralelo `/v1/balance?month` (con `by_category` desde U3), `/v1/transactions?month`, `/v1/budgets?month`; expone `{balance, txs, budgets, cats, byCat, byCategory, reload}`. Si `balance.by_category` viene, `byCat` se deriva de ahí con fallback cliente.
+- `mobile/App.tsx`: **shell persistente** (ver §6) — header global (logo, chip 🤖IA agrandado, cog→Sheet "Más" con Reglas/Config/(dev)Probar/Galería) + **PeriodPager** global (chevrons mueven por mes **o por ciclo 20→20**, botón calendario → DateRangePicker, `×` para volver al default) + hero "Total Gastos" + chip filtro + sub-tabs + FAB `FabMenu` Gasto/Ingreso + `filterCategory`/`period`(month|range)/`subTab`/`secondary` + `AppState` resend cada 30s. Carga `/v1/settings` al abrir (ciclo default si activo, mes si no, `CyclePrompt` si nunca configurado)
+- `mobile/src/lib/useShellData.ts`: **fuente única** — en paralelo `/v1/balance` (con `by_category` desde U3), `/v1/transactions`, `/v1/budgets` con query por `month` o `from`/`to` (range); expone `{balance, txs, budgets, cats, byCat, byCategory, loading, reload}` + `fetchSettings`/`saveSettings`. Si `balance.by_category` viene, `byCat` se deriva de ahí con fallback cliente. `Period = {type:"month"} | {type:"range",from,to}`
+- `mobile/src/lib/billingCycle.ts`: `currentCycle(day)`, `shiftCycle(range,delta)`, `rangeLabel(range)`, `shiftMonthStable`, `shiftDays`, `rangeMonths` — ciclo 20→20, todo UTC
 - `mobile/src/lib/categories.ts`: `Category` con `type`; `mobile/src/lib/supabase.ts` simplificado a solo `API_URL` (cliente Supabase sin uso, se quitó `createClient`)
 - `mobile/src/theme/tokens.ts` + `categoryIcons.tsx`: paleta #0C1322/#182238/#223052 + 14 categorías MCI es-CL
-- `mobile/src/components/ui/`: `MIcon` (siempre), `BalanceHero`, `AddMoveModal`, `IASheet` (4 prompts locales del mes), `SwipeRow` (Pressable opaco, encuadre corregido), Card, Progress (+ `color` para tinte categoría), CategoryCircle/Tag, Amount (fix `color:string`), MonthPager, EmptyState, StatusBadge es, ListRow (fix `s.day`), Sheet, ScreenHeader
+- `mobile/src/components/ui/`: `MIcon` (siempre), `BalanceHero`, `AddMoveModal`, `IASheet` (4 prompts locales del mes), `SwipeRow` (Pressable opaco, encuadre corregido), Card, Progress (+ `color` para tinte categoría), CategoryCircle/Tag, Amount (fix `color:string`), MonthPager, EmptyState, StatusBadge es, ListRow (fix `s.day`), Sheet, ScreenHeader, **PeriodPager**, **DateRangePicker** (calendario custom sin deps nativas), **CyclePrompt** (onboarding ciclo)
 - `mobile/src/screens/`: **Categorias** (distribución con `byCat` + últimos 5, `Progress` con `catIcon.color`), **Movimientos** (sub-tab con `SwipeRow` compartido), **Presupuesto** (metas, `CopyPrev`, `deleteBudget`, `editBudget` al tocar, `SwipeRow` con `Pressable`), `IngestionTest` (+ `onReload`), `Config` (+ `Notificaciones` con `simulate`/`resendActive`/`postTestVisible` + `onReload`), `GaleriaUI` sin sonda; `Dashboard`/`BalanceCard`/`BudgetBar`/`demoData`/`dataset100` (mobile) **eliminados** (código muerto)
 - `mobile/src/native/allowlist.json` (15 prefijos, fuente única) + `backend/src/modules/ingestion/allowlist.ts` espejo server-side `isAllowlisted()`; `mobile/src/native/NotificationListener.ts` + `android/.../NotificationListener*.kt` sincronizados v2: `cl.android`=Falabella, `com.google.android.gms`=Wallet via GMS (Billetera de Google), `cl.bancochile/bci/santander/bancoestado/scotiabank/itau`, `walletnfcrel`, `mercadopago`, `mach/tenpo` (`DEBUG_SELF` tests, `postTestNotification`, `setApiUrl` en `SharedPreferences`)
 - `mobile/.env.local`: `EXPO_PUBLIC_API_URL=https://misgastos-production-b8c6.up.railway.app` (fuera de LAN, Railway Node 22) — `EXPO_PUBLIC_SUPABASE_URL` aún en LAN pero sin uso
@@ -163,6 +167,13 @@ Durante la sesión del 25/08 hubo **OTRA IA/sesión editando este mismo repo sim
 ---
 
 ## 4. Cambios de la última sesión (lo más reciente primero)
+
+-18. **Filtro de ciclo de facturación (20→20) + rango de fechas custom** — 2026-09-03 — `backend/src/modules/settings/routes.ts`, `backend/src/lib/dateRange.ts`, `backend/src/modules/balance/routes.ts`, `backend/src/modules/transactions/routes.ts`, `backend/src/modules/budgets/routes.ts`, `backend/src/lib/mockStore.ts`, `backend/src/index.ts`, `mobile/App.tsx`, `mobile/src/lib/useShellData.ts`, `mobile/src/lib/billingCycle.ts`, `mobile/src/components/ui/{PeriodPager,DateRangePicker,CyclePrompt}.tsx`, `mobile/src/screens/{Presupuesto,Config}.tsx`, `supabase/migrations/006_user_settings.sql`:
+    - **Problema**: el usuario factura del día 20 de un mes al 20 del siguiente; su "mes" real cruza dos meses calendario y no había manera de ver el balance/movimientos/presupuestos de ese ciclo, ni un rango de fechas arbitrario. El `useShellData` solo aceptaba `month=YYYY-MM` y los budgets están anclados a `YYYY-MM-01`.
+    - **Fix backend**: tabla `user_settings` (`billing_cycle_day` 1-28 con check, `billing_cycle_enabled` tri-estado null=nunca preguntado / false=rechazado / true=activo) + RLS, migración `006_user_settings.sql` **aplicada a prod**. Nuevo módulo `settings/routes.ts` (`GET/PUT /v1/settings`, Zod day 1-28). `balance`/`transactions`/`budgets` aceptan `from`/`to` (ISO, inclusive) como alternativa a `month`; `transactions` suma `limit` (máx 500, default 100). `budgets` en modo rango **prorratea** el monto mensual por solape de días (`Σ amount × días_solape/días_mes`) y calcula `spent` real del rango, dedup por categoría, devuelve `range` + `effective`. Helper puro `lib/dateRange.ts` (`monthOverlaps`, `rangeDays`, `shiftMonthStable`, `addDays`, `fmt`). `balance` en rango: `weekly=[]`, `by_category` con `budget` prorrateado, `range:{from,to,days}`. mockStore: `settings{}` persistido + filter `from`/`to` en `listTransactions`.
+    - **Fix mobile**: `useShellData(period)` con `Period = {type:"month"} | {type:"range",from,to}` + `fetchSettings`/`saveSettings`. `billingCycle.ts` (`currentCycle(day)`, `shiftCycle`, `rangeLabel`, `shiftMonthStable`, `shiftDays`). `App.tsx`: `PeriodPager` reemplaza a `MonthPager` (chevrons → `shiftCycle` en rango o mes), botón calendario para abrir `DateRangePicker`, `×` para volver al default; carga settings al abrir (default = ciclo si activo, mes si no, `CyclePrompt` si nunca configurado). `DateRangePicker` = calendario custom (Sheet, **sin dependencia nativa** → no requiere prebuild). `Presupuesto` en modo rango = **solo lectura** (límites prorrateados, sin Configurar/editar/copiar). `Config` card "Ciclo de facturación" (toggle + stepper día 1-28) → `PUT /v1/settings`.
+    - **Verificación**: `vitest 171/171 (22 files)` — nuevos `lib/dateRange.test.ts` (6), `modules/settings/routes.test.ts` (5), `modules/ranges/routes.test.ts` (3, mock supabase funcional). `tsc --noEmit` 0 errores. `/health` local `0.4.1-finan`. Migración 006 aplicada a Supabase (`user_settings` con RLS ok).
+    - **Nota**: al abrir, `billing_cycle_enabled=true` → default = ciclo actual; `false` → mes calendario (sin prompt); `null` → prompt de onboarding (una vez). El filtro activo es in-memory (se resetea al cerrar la app). Sin cambios de schema AI ni guard.
 
 -17. **Endurecimiento de Finan contra publicidad bancaria (promo-hardening)** — 2026-08-31 — `backend/src/ai/prompts/agente-financiero.ts`, `backend/src/ai/providers/GroqProvider.ts`, `backend/tests/agent-financiero.test.ts`, `backend/tests/ingestion.guard.test.ts`, `backend/src/index.ts` (+ `spec/sdd-financial-promo-hardening.md`):
     - **Problema**: anuncios bancarios como `"¡Despegó Travel Days! … canjea tus Dólares-Premio"` y `"Participa y gana hasta $500.000 …"` se ingerían como **gastos fantasma** (`-$1.000.000` / `-$500.000`). El parser extrae la cifra (`$500.000`→500000) y el prompt anclaba `amount` a `parser_hints` → la IA lo trataba como movimiento real.
@@ -343,6 +354,11 @@ Durante la sesión del 25/08 hubo **OTRA IA/sesión editando este mismo repo sim
 > DECISIÓN DE SCOPE del usuario (2026-08-25): Phase 9 (Advisor) e iOS se difieren
 > a versión posterior. Plan detallado con checkpoints: `spec/ui-redesign-plan.md`.
 
+### Filtro de ciclo de facturación (20→20) — ✅ implementado (web/back, 2026-09-03)
+- **Backend**: `user_settings` (migración 006, RLS) + `GET/PUT /v1/settings`; `balance`/`transactions`/`budgets` con `from`/`to`; **presupuestos prorrateados por días** en rango (dedup por categoría, `spent` real). Helper `lib/dateRange.ts`.
+- **Mobile**: `PeriodPager` (chevrons → `shiftCycle` 20→20 o mes), `DateRangePicker` (calendario custom, sin deps nativas → sin prebuild), `CyclePrompt` (prompt al primer uso "¿tu ciclo de facturación?"), `Presupuesto` solo lectura en rango, `Config` card ciclo. Default: ciclo activo → ciclo actual; inactivo → mes; nunca configurado → prompt una vez.
+- **Verificación**: `171/171` (22 files), `tsc` 0. Migración 006 aplicada a Supabase. Pendiente **push → Railway** para exponer los endpoints en prod.
+
 ### U0 — Design System ✅ 100%
 - Tokens, paleta, 11 componentes ui, GaleriaUI — verificado on-device (iconos MCI, chevrons, FAB, chip IA)
 - Feedback ronda 1 cerrado: MonthPager centrado · Progress sin % superpuesto (solo barra+icono) · FabMenu premium · chip IA robot-happy
@@ -438,7 +454,7 @@ PLAN-dev-client-fix.md                        → análisis root cause native mo
 Invoke-RestMethod http://localhost:3000/health
 
 # 2. Tests verdes?
-powershell -ExecutionPolicy Bypass -Command "cd backend; npx vitest run"    # esperar: 19 files, 149 tests passed (incluye ingestion.guard + agent-financiero)
+powershell -ExecutionPolicy Bypass -Command "cd backend; npx vitest run"    # esperar: 22 files, 171 tests passed (incluye ingestion.guard + agent-financiero + settings/ranges)
 
 # 3. Flujo reglas funciona?
 Invoke-RestMethod -Uri http://localhost:3000/v1/rules -Method POST -Headers @{"Content-Type"="application/json"} -Body '{"merchant_normalized":"test","preferred_category_id":"00000000-0000-0000-0000-000000000001"}'

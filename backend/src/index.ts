@@ -8,6 +8,7 @@ import { budgetRoutes } from "./modules/budgets/routes.js";
 import { balanceRoutes } from "./modules/balance/routes.js";
 import { ingestionRoutes } from "./modules/ingestion/routes.js";
 import { ruleRoutes } from "./modules/rules/routes.js";
+import { settingsRoutes } from "./modules/settings/routes.js";
 
 const app = Fastify({ logger: true });
 await app.register(cors, { origin: true });
@@ -21,6 +22,7 @@ await app.register(budgetRoutes);
 await app.register(balanceRoutes);
 await app.register(ingestionRoutes);
 await app.register(ruleRoutes);
+await app.register(settingsRoutes);
 
 // 404
 app.setNotFoundHandler((req, reply) => reply.status(404).send({ error: "not found" }));

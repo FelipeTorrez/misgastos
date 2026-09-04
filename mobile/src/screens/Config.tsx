@@ -3,18 +3,45 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Switch, Alert } f
 import { API_URL } from "../lib/supabase";
 import { C, R } from "../theme/tokens";
 import { Card } from "../components/ui/Card";
+import { MIcon } from "../components/ui/MIcon";
+import { UserSettings, fetchSettings, saveSettings } from "../lib/useShellData";
+import { currentCycle, rangeLabel } from "../lib/billingCycle";
 import { hasPermission, requestPermission, simulateBankNotification, resendActive, postTestNotificationVisible } from "../native/NotificationListener";
 
-export function Config({ devMode, setDevMode, onNavigate, onReload }: { devMode: boolean; setDevMode: (v: boolean) => void; onNavigate?: (key: string) => void; onReload?: () => void }) {
+export function Config({ devMode, setDevMode, onNavigate, onReload, settings, onCycleChange }: {
+  devMode: boolean;
+  setDevMode: (v: boolean) => void;
+  onNavigate?: (key: string) => void;
+  onReload?: () => void;
+  settings?: UserSettings | null;
+  onCycleChange?: (day: number, enabled: boolean) => void;
+}) {
   const [health, setHealth] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [notifPerm, setNotifPerm] = useState<boolean | null>(null);
   const [simMsg, setSimMsg] = useState<string | null>(null);
+  const [cycleDay, setCycleDay] = useState(settings?.billing_cycle_day ?? 20);
+  const [cycleEnabled, setCycleEnabled] = useState<boolean | null>(settings?.billing_cycle_enabled ?? null);
+  const [cycleMsg, setCycleMsg] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`${API_URL}/health`).then(r => r.json()).then(setHealth).catch(e => setError(String(e.message ?? e)));
     hasPermission().then(setNotifPerm).catch(() => setNotifPerm(null));
+    fetchSettings().then(s => {
+      if (s) { setCycleDay(s.billing_cycle_day); setCycleEnabled(s.billing_cycle_enabled); }
+    }).catch(() => {});
   }, []);
+
+  const cyclePreview = currentCycle(cycleDay);
+  const notifyCycle = (m: string) => { setCycleMsg(m); setTimeout(() => setCycleMsg(null), 2400); };
+
+  async function saveCycle(day: number, enabled: boolean | null) {
+    const saved = await saveSettings({ billing_cycle_day: day, billing_cycle_enabled: enabled });
+    setCycleDay(saved?.billing_cycle_day ?? day);
+    setCycleEnabled(saved?.billing_cycle_enabled ?? enabled);
+    if (saved) onCycleChange?.(saved.billing_cycle_day, saved.billing_cycle_enabled === true);
+    notifyCycle("Ciclo actualizado");
+  }
 
   async function sim(text: string) {
     setSimMsg("Enviando…");
@@ -48,6 +75,30 @@ export function Config({ devMode, setDevMode, onNavigate, onReload }: { devMode:
         ) : (
           <Text style={{ color: C.dim, marginTop: 8 }}>Verificando…</Text>
         )}
+      </Card>
+
+      <Card style={{ marginTop: 12 }}>
+        <View style={s.switchRow}>
+          <View>
+            <Text style={s.h2}>Ciclo de facturación</Text>
+            <Text style={s.muted}>Muestra tu ciclo en lugar del mes calendario</Text>
+          </View>
+          <Switch value={cycleEnabled === true} onValueChange={v => saveCycle(cycleDay, v)} trackColor={{ true: C.primary }} thumbColor={cycleEnabled ? "#fff" : undefined} />
+        </View>
+
+        <View style={s.cycleDayRow}>
+          <TouchableOpacity style={s.cycleDayBtn} onPress={() => saveCycle(Math.max(1, cycleDay - 1), cycleEnabled)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <MIcon name="minus" size={18} color={C.text} />
+          </TouchableOpacity>
+          <View style={s.cycleDayBox}>
+            <Text style={s.cycleDayText}>Día {cycleDay}</Text>
+            <Text style={s.cycleDayPreview}>{rangeLabel(cyclePreview)}</Text>
+          </View>
+          <TouchableOpacity style={s.cycleDayBtn} onPress={() => saveCycle(Math.min(28, cycleDay + 1), cycleEnabled)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <MIcon name="plus" size={18} color={C.text} />
+          </TouchableOpacity>
+        </View>
+        {cycleMsg && <Text style={[s.muted, { color: C.positive, marginTop: 4 }]}>{cycleMsg}</Text>}
       </Card>
 
       <Card style={{ marginTop: 12 }}>
@@ -129,6 +180,11 @@ const s = StyleSheet.create({
   mono: { color: C.text, fontFamily: "monospace", fontSize: 11 },
   muted: { color: C.dim, fontSize: 12 },
   switchRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  cycleDayRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 12 },
+  cycleDayBtn: { width: 44, height: 44, borderRadius: R.md, backgroundColor: C.surfaceAlt, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: C.border },
+  cycleDayBox: { flex: 1, alignItems: "center", gap: 2 },
+  cycleDayText: { color: C.text, fontSize: 16, fontWeight: "800" },
+  cycleDayPreview: { color: C.primary, fontSize: 12, fontWeight: "600" },
   devBtn: { backgroundColor: C.surfaceAlt, padding: 12, borderRadius: R.md, borderWidth: 1, borderColor: C.border },
   devBtnText: { color: C.primary, fontWeight: "700", textAlign: "center" },
   footer: { color: C.faint, fontSize: 11, textAlign: "center", marginTop: 24 },

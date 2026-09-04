@@ -23,7 +23,7 @@
 
 ### Re-arquitectura de navegación (decidida 2026-08-26, aplicada en U5)
 El usuario pidió que la pantalla principal (mes + balance general) quede **fija arriba** y que uno pueda sub-navegar entre sub-tabs **sin que se mueva**, con un **FAB global [+]**. Se replicó el layout de KuantoKua:
-- Bloque superior fijo: header (logo+IA+cog) → MonthPager → hero **Total Gastos** (+ingresos y **Balance** en verde a la derecha) → chip de filtro → sub-tabs `Categorías · Movimientos · Presupuestos`.
+- Bloque superior fijo: header (logo+IA+cog) → **PeriodPager** (mes o ciclo; antes MonthPager) → hero **Total Gastos** (+ingresos y **Balance** en verde a la derecha) → chip de filtro → sub-tabs `Categorías · Movimientos · Presupuestos`.
 - Sub-tabs por debajo del bloque fijo (contenido scrollable; usa el mes del shell). Se eliminó la bottom tab bar; Reglas/Config/Probar/Galería quedan en el Sheet `[⚙]` (como pantallas `secondary` con botón atrás).
 - FAB `[+]` global (abre modal Gasto/Ingreso), visible en todas las sub-tabs.
 - **Fuente única de datos**: `mobile/src/lib/useShellData.ts` (balance+transactions+budgets del mes) → cambiar mes recalcula todo.
@@ -48,8 +48,13 @@ El usuario pidió que la pantalla principal (mes + balance general) quede **fija
 - **U6 (Pulido + IA sheet local)** es el siguiente objetivo y el último que cierra el v1 local. U3 (by_category backend) es opcional.
 
 ### Aplicado en código (resumen)
-✅ Paleta #0C1322/#182238/#223052 · MonthPager centrado flechas blancas · Progress barra+icono sin % · FabMenu premium spring · chip IA robot-happy · toast tarjeta surface · Config real · **shell persistente (month+BalanceHero+sub-tabs+FAB global)** · sub-tab Categorías (distribución+últimos 5) · sub-tab Presupuestos (metas+barras+Configurar)
-- Nuevos componentes: `BalanceHero`, `AddMoveModal`. Hook: `useShellData`. Screen `Dashboard` quedó sin uso (hero movido al shell).
+✅ Paleta #0C1322/#182238/#223052 · PeriodPager (mes o ciclo 20→20) · Progress barra+icono sin % · FabMenu premium spring · chip IA robot-happy · toast tarjeta surface · Config real · **shell persistente (periodo+BalanceHero+sub-tabs+FAB global)** · sub-tab Categorías (distribución+últimos 5) · sub-tab Presupuestos (metas+barras+Configurar)
+- Nuevos componentes: `BalanceHero`, `AddMoveModal`, `PeriodPager`, `DateRangePicker` (calendario custom sin deps nativas), `CyclePrompt` (onboarding ciclo). Hook: `useShellData(period)`. Screen `Dashboard` quedó sin uso (hero movido al shell).
+
+### Feature: filtro de ciclo de facturación (20→20) — ✅ implementado (web/back, 2026-09-03)
+- `PeriodPager` reemplaza a `MonthPager` (chevrons → `shiftCycle` en rango, `shiftMonth` en mes). `App.tsx` carga `/v1/settings` al abrir: default ciclo si activo, mes si no, `CyclePrompt` si nunca configurado.
+- Backend: `balance`/`transactions`/`budgets` con `from`/`to`; `budgets` prorrateados por días en rango; migración 006 `user_settings` + `GET/PUT /v1/settings`.
+- Verificado: `171/171` (22 files), `tsc` 0. Pendiente push → Railway.
 
 ### Pendiente aplicar
 ⏳ Donut "Distribución por Categoría" (v1.1, react-native-svg + prebuild)

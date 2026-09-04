@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { supabase, getUserId, isMockMode } from "../../lib/supabase.js";
 import { mockStore } from "../../lib/mockStore.js";
+import { monthOverlaps } from "../../lib/dateRange.js";
 
 const CreateBudget = z.object({
   category_id: z.string().uuid().nullable(), // null = global
@@ -11,11 +12,87 @@ const CreateBudget = z.object({
 });
 
 export async function budgetRoutes(app: FastifyInstance) {
-  // Lista presupuestos del mes con spent calculado
+  // Lista presupuestos del mes (o de un rango prorrateado) con spent calculado
   app.get("/v1/budgets", async (req: any) => {
     const userId = getUserId(req);
     const month = req.query?.month ?? new Date().toISOString().slice(0,7) + "-01";
+    const from = req.query?.from;   // YYYY-MM-DD (inclusive)
+    const to = req.query?.to;       // YYYY-MM-DD (inclusive)
+    const isRange = Boolean(from && to);
+
     let budgets: any[], txs: any[];
+
+    if (isRange) {
+      const overlaps = monthOverlaps(from, to);
+      const budgetByCat = new Map<string, number>();
+      let globalAmount = 0;
+      let rawBudgets: any[] = [];
+
+      for (const o of overlaps) {
+        let monthBs: any[] = [];
+        if (isMockMode) {
+          monthBs = mockStore.listBudgets(userId, o.month);
+        } else {
+          const { data: bs } = await supabase.from("budgets").select("*, categories(name, slug)").eq("user_id", userId).eq("month", o.month);
+          monthBs = bs ?? [];
+        }
+        rawBudgets = rawBudgets.concat(monthBs);
+        for (const b of monthBs as any[]) {
+          const prorated = Math.round(b.amount * o.ratio);
+          if (b.category_id) budgetByCat.set(b.category_id, (budgetByCat.get(b.category_id) ?? 0) + prorated);
+          else globalAmount += prorated;
+        }
+      }
+
+      // spent: gasto real dentro del rango
+      let rangeTxs: any[];
+      if (isMockMode) {
+        rangeTxs = mockStore.transactions.filter(t =>
+          t.user_id === userId && t.type === "expense" &&
+          t.status !== "duplicate" && t.status !== "ignored" &&
+          typeof t.date === "string" && t.date.slice(0, 10) >= from && t.date.slice(0, 10) <= to
+        ).map(t => ({ amount: t.amount, category_id: t.category_id }));
+      } else {
+        const start = from;
+        const toExcl = new Date(new Date(`${to}T00:00:00Z`).getTime() + 86400000).toISOString().slice(0, 10);
+        const { data: ts } = await supabase.from("transactions").select("amount, category_id, type, status").eq("user_id", userId).eq("type","expense").gte("date", start).lt("date", toExcl);
+        rangeTxs = ((ts ?? []) as any[]).filter(t => t.status !== "duplicate" && t.status !== "ignored");
+      }
+      const byCat: Record<string, number> = {};
+      let globalSpent = 0;
+      for (const t of rangeTxs) {
+        globalSpent += t.amount;
+        if (t.category_id) byCat[t.category_id] = (byCat[t.category_id] ?? 0) + t.amount;
+      }
+
+      // unir categorías de presupuestos (dedup por id)
+      const seen = new Set<string>();
+      let seenGlobal = false;
+      const merged: (any & { amount: number; effective: boolean })[] = [];
+      for (const b of rawBudgets as any[]) {
+        const prorated = b.category_id ? (budgetByCat.get(b.category_id) ?? 0) : globalAmount;
+        if (b.category_id) {
+          if (seen.has(b.category_id)) continue;
+          seen.add(b.category_id);
+        } else {
+          if (seenGlobal) continue;
+          seenGlobal = true;
+        }
+        const spent = b.category_id ? (byCat[b.category_id] ?? 0) : globalSpent;
+        merged.push({
+          ...b,
+          amount: prorated,
+          spent,
+          remaining: prorated - spent,
+          pct: Math.round((spent / prorated) * 100),
+          month: from,
+          range: { from, to },
+          effective: b.category_id ? true : (globalAmount > 0),
+        });
+      }
+      return merged;
+    }
+
     if (isMockMode) {
       budgets = mockStore.listBudgets(userId, month);
       txs = mockStore.transactions.filter(t =>

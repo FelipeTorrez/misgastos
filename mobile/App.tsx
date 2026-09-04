@@ -3,14 +3,17 @@ import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, AppState } from
 import { C } from "./src/theme/tokens";
 import { MIcon } from "./src/components/ui/MIcon";
 import { Sheet } from "./src/components/ui/Sheet";
-import { MonthPager } from "./src/components/ui/MonthPager";
+import { PeriodPager } from "./src/components/ui/PeriodPager";
+import { DateRangePicker } from "./src/components/ui/DateRangePicker";
+import { CyclePrompt } from "./src/components/ui/CyclePrompt";
 import { BalanceHero } from "./src/components/ui/BalanceHero";
 import { AddMoveModal } from "./src/components/ui/AddMoveModal";
 import { FabMenu } from "./src/components/ui/FabMenu";
 import { IASheet } from "./src/components/ui/IASheet";
 import { hasPermission, startListening, setApiUrl, flushQueue, resendActive } from "./src/native/NotificationListener";
 import { API_URL } from "./src/lib/supabase";
-import { useShellData } from "./src/lib/useShellData";
+import { useShellData, fetchSettings, saveSettings, Period, UserSettings } from "./src/lib/useShellData";
+import { currentCycle, DateRange } from "./src/lib/billingCycle";
 import { Categorias } from "./src/screens/Categorias";
 import { Movimientos } from "./src/screens/Movimientos";
 import { Presupuesto } from "./src/screens/Presupuesto";
@@ -35,8 +38,17 @@ const secondaryMap: Record<string, any> = {
   cfg: Config,
 };
 
+function currentMonth(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 export default function App() {
-  const [month, setMonth] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; });
+  const [period, setPeriod] = useState<Period>(() => ({ type: "month", month: currentMonth() }));
+  const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [promptDay, setPromptDay] = useState(20);
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [rangeOpen, setRangeOpen] = useState(false);
   const [subTab, setSubTab] = useState<SubTab>("categorias");
   const [secondary, setSecondary] = useState<string | null>(null);
   const [devMode, setDevMode] = useState(true);
@@ -46,9 +58,51 @@ export default function App() {
   const [addType, setAddType] = useState<"expense" | "income">("expense");
   const [filterCategory, setFilterCategory] = useState<{ id: string; label: string; slug: string } | null>(null);
 
-  const { balance, txs, budgets, cats, byCat, reload } = useShellData(month);
+  const { balance, txs, budgets, cats, byCat, reload } = useShellData(period);
   const reloadRef = useRef(reload);
   useEffect(() => { reloadRef.current = reload; }, [reload]);
+
+  // Carga la config del ciclo de facturación al abrir (default: ciclo si está activo)
+  useEffect(() => {
+    fetchSettings().then(s => {
+      setSettings(s);
+      if (s && s.billing_cycle_enabled === true) {
+        setPeriod({ type: "range", ...currentCycle(s.billing_cycle_day) });
+      } else if (s && s.billing_cycle_enabled === false) {
+        setPeriod({ type: "month", month: currentMonth() });
+      } else {
+        setPromptOpen(true);
+        setPromptDay(s?.billing_cycle_day ?? 20);
+      }
+    }).catch(() => {});
+  }, []);
+
+  function defaultPeriod(): Period {
+    if (settings && settings.billing_cycle_enabled === true) return { type: "range", ...currentCycle(settings.billing_cycle_day) };
+    return { type: "month", month: currentMonth() };
+  }
+  const isDefault = JSON.stringify(period) === JSON.stringify(defaultPeriod());
+
+  function resetToDefault() { setPeriod(defaultPeriod()); }
+  function applyRange(r: DateRange) { setPeriod({ type: "range", ...r }); setRangeOpen(false); }
+
+  async function acceptCycle() {
+    const saved = await saveSettings({ billing_cycle_day: promptDay, billing_cycle_enabled: true });
+    setSettings(saved ?? { billing_cycle_day: promptDay, billing_cycle_enabled: true });
+    setPeriod({ type: "range", ...currentCycle(promptDay) });
+    setPromptOpen(false);
+  }
+  async function declineCycle() {
+    const saved = await saveSettings({ billing_cycle_enabled: false });
+    setSettings(saved ?? { billing_cycle_day: promptDay, billing_cycle_enabled: false });
+    setPromptOpen(false);
+  }
+
+  function applyCycleSettings(day: number, enabled: boolean) {
+    setSettings(prev => ({ billing_cycle_day: day, billing_cycle_enabled: enabled }));
+    if (enabled) setPeriod({ type: "range", ...currentCycle(day) });
+    else setPeriod({ type: "month", month: currentMonth() });
+  }
 
   // Phase 6: reenvío NATIVO (funciona con app cerrada) + refresco de UI al detectar notificación
   useEffect(() => {
@@ -83,11 +137,14 @@ export default function App() {
   }
   function openSecondary(k: string) { setSecondary(k); setSheetOpen(false); }
 
+  const month = period.type === "month" ? period.month : period.from.slice(0, 7);
+  const rangeActive = period.type === "range";
+
   let content;
   if (secondary) {
     const Sec = secondaryMap[secondary];
     const extra: any = {};
-    if (secondary === "cfg") Object.assign(extra, { devMode, setDevMode, onNavigate: (k: string) => setSecondary(k), onReload: reload });
+    if (secondary === "cfg") Object.assign(extra, { devMode, setDevMode, onNavigate: (k: string) => setSecondary(k), onReload: reload, settings, onCycleChange: applyCycleSettings });
     else if (secondary === "ingest" || secondary === "probar") Object.assign(extra, { onReload: reload });
     content = <Sec {...extra} />;
   } else if (subTab === "categorias") {
@@ -104,7 +161,7 @@ export default function App() {
       />
     );
   } else {
-    content = <Presupuesto budgets={budgets} cats={cats} month={month} onRefresh={reload} />;
+    content = <Presupuesto budgets={budgets} cats={cats} month={month} onRefresh={reload} rangeActive={rangeActive} />;
   }
 
   return (
@@ -136,7 +193,7 @@ export default function App() {
       {!secondary && (
         <View style={s.fixedTop}>
           <View style={s.monthWrap}>
-            <MonthPager month={month} onChange={setMonth} />
+            <PeriodPager period={period} onChange={setPeriod} onOpenRange={() => setRangeOpen(true)} showClear={!isDefault} onClear={resetToDefault} />
           </View>
           <BalanceHero
             income={balance.income}
@@ -169,6 +226,21 @@ export default function App() {
       <AddMoveModal visible={addOpen} onClose={() => setAddOpen(false)} cats={cats} onAdded={reload} initialType={addType} />
 
       <IASheet visible={iaOpen} onClose={() => setIaOpen(false)} month={month} balance={balance} byCat={byCat} budgets={budgets} cats={cats} />
+
+      <DateRangePicker
+        visible={rangeOpen}
+        onClose={() => setRangeOpen(false)}
+        initial={period.type === "range" ? period : null}
+        onApply={applyRange}
+      />
+
+      <CyclePrompt
+        visible={promptOpen}
+        day={promptDay}
+        onDayChange={setPromptDay}
+        onAccept={acceptCycle}
+        onDecline={declineCycle}
+      />
 
       <Sheet visible={sheetOpen} onClose={() => setSheetOpen(false)} title="Más">
         <TouchableOpacity style={s.sheetItem} onPress={() => openSecondary("reglas")}>

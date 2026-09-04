@@ -11,11 +11,12 @@ import { MIcon } from "../components/ui/MIcon";
 import { API_URL } from "../lib/supabase";
 import { fmtCLP } from "../lib/format";
 
-export function Presupuesto({ budgets, cats, month, onRefresh }: {
+export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive }: {
   budgets: Budget[];
   cats: Category[];
   month: string;
   onRefresh?: () => void;
+  rangeActive?: boolean;
 }) {
   const [configOpen, setConfigOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -102,31 +103,35 @@ export function Presupuesto({ budgets, cats, month, onRefresh }: {
       <View style={s.headRow}>
         <View style={{ flex: 1 }}>
           <Text style={s.title}>Metas & Presupuestos</Text>
-          <Text style={s.subtitle}>Límites mensuales por categoría</Text>
+          <Text style={s.subtitle}>{rangeActive ? "Ciclo — límites prorrateados" : "Límites mensuales por categoría"}</Text>
         </View>
-        <TouchableOpacity style={s.configBtn} onPress={openConfig} activeOpacity={0.8}>
-          <MIcon name="cog" size={14} color="#04121F" />
-          <Text style={s.configText}>Configurar</Text>
-        </TouchableOpacity>
+        {!rangeActive && (
+          <TouchableOpacity style={s.configBtn} onPress={openConfig} activeOpacity={0.8}>
+            <MIcon name="cog" size={14} color="#04121F" />
+            <Text style={s.configText}>Configurar</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
-      <Text style={s.hint}>Desliza para borrar · Toca para editar</Text>
+      <Text style={s.hint}>{rangeActive ? "Vista de ciclo (solo lectura) — toca el calendario para volver al mes" : "Desliza para borrar · Toca para editar"}</Text>
 
       {rows.length === 0 ? (
         <View style={s.empty}>
           <View style={s.emptyIcon}><MIcon name="target" size={28} color={C.primary} /></View>
-          <Text style={s.emptyTitle}>Aún no has definido límites</Text>
-          <Text style={s.emptySub}>Configura tus categorías o copia las del mes anterior.</Text>
-          <View style={s.emptyBtns}>
-            <TouchableOpacity style={s.primaryBtn} onPress={openConfig} activeOpacity={0.85}>
-              <MIcon name="cog" size={14} color="#04121F" />
-              <Text style={s.primaryBtnText}>Configurar</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={s.ghostBtn} onPress={copyPrev} activeOpacity={0.85}>
-              <MIcon name="content-copy" size={14} color={C.primary} />
-              <Text style={s.ghostBtnText}>Copiar del mes anterior</Text>
-            </TouchableOpacity>
-          </View>
+          <Text style={s.emptyTitle}>{rangeActive ? "Sin límites en este ciclo" : "Aún no has definido límites"}</Text>
+          <Text style={s.emptySub}>{rangeActive ? "Define límites mensuales en la vista de mes." : "Configura tus categorías o copia las del mes anterior."}</Text>
+          {!rangeActive && (
+            <View style={s.emptyBtns}>
+              <TouchableOpacity style={s.primaryBtn} onPress={openConfig} activeOpacity={0.85}>
+                <MIcon name="cog" size={14} color="#04121F" />
+                <Text style={s.primaryBtnText}>Configurar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.ghostBtn} onPress={copyPrev} activeOpacity={0.85}>
+                <MIcon name="content-copy" size={14} color={C.primary} />
+                <Text style={s.ghostBtnText}>Copiar del mes anterior</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       ) : (
         <View style={{ marginTop: 8 }}>
@@ -134,24 +139,24 @@ export function Presupuesto({ budgets, cats, month, onRefresh }: {
             const cat = cats.find(c => c.id === b.category_id);
             const slug = b.categories?.slug ?? cat?.slug;
             const name = b.categories?.name ?? cat?.label ?? "Categoría";
-            return (
-              <SwipeRow key={b.id} onDelete={() => deleteBudget(b)}>
-                <Pressable style={({ pressed }) => [s.row, pressed && { opacity: 0.7 }]} onPress={() => editBudget(b)}>
-                  <CategoryCircle slug={slug} size={40} />
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <View style={s.rowHead}>
-                      <Text style={s.name}>{name}</Text>
-                      <Text style={s.spent}>{fmtCLP(b.spent)}</Text>
-                    </View>
-                    <Text style={s.limit}>de {fmtCLP(b.amount)}</Text>
-                    <View style={{ marginTop: 8 }}>
-                      <Progress pct={b.pct ?? 0} height={7} />
-                    </View>
+            const content = (
+              <Pressable style={({ pressed }) => [s.row, pressed && !rangeActive && { opacity: 0.7 }]} onPress={() => !rangeActive && editBudget(b)}>
+                <CategoryCircle slug={slug} size={40} />
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <View style={s.rowHead}>
+                    <Text style={s.name}>{name}</Text>
+                    <Text style={s.spent}>{fmtCLP(b.spent)}</Text>
                   </View>
-                  <MIcon name="chevron-right" size={18} color={C.faint} />
-                </Pressable>
-              </SwipeRow>
+                  <Text style={s.limit}>de {fmtCLP(b.amount)}</Text>
+                  <View style={{ marginTop: 8 }}>
+                    <Progress pct={b.pct ?? 0} height={7} />
+                  </View>
+                </View>
+                <MIcon name="chevron-right" size={18} color={C.faint} />
+              </Pressable>
             );
+            if (rangeActive) return <View key={b.id} style={s.swipeStatic}>{content}</View>;
+            return <SwipeRow key={b.id} onDelete={() => deleteBudget(b)}>{content}</SwipeRow>;
           })}
         </View>
       )}
@@ -222,6 +227,7 @@ const s = StyleSheet.create({
   configBtn: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: C.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: R.pill },
   configText: { color: "#04121F", fontWeight: "800", fontSize: 12 },
   row: { backgroundColor: C.surface, padding: 14, borderRadius: 12, flexDirection: "row", alignItems: "center" },
+  swipeStatic: { marginBottom: 8, borderRadius: 12, overflow: "hidden" },
   rowHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   name: { color: C.text, fontWeight: "700", fontSize: 15 },
   spent: { color: C.text, fontWeight: "800", fontSize: 14 },

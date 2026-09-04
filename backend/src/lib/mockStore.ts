@@ -13,6 +13,7 @@ type DiskData = {
   transactions: any[];
   budgets: any[];
   rawEvents: Record<string, string>;
+  settings: Record<string, any>;
 };
 
 function loadFromDisk(): DiskData | null {
@@ -26,6 +27,7 @@ function loadFromDisk(): DiskData | null {
         transactions: d.transactions,
         budgets: Array.isArray(d.budgets) ? d.budgets : [],
         rawEvents: (d.rawEvents && typeof d.rawEvents === "object") ? d.rawEvents : {},
+        settings: (d.settings && typeof d.settings === "object") ? d.settings : {},
       };
     }
   } catch { /* archivo no existe aún */ }
@@ -43,12 +45,33 @@ export const mockStore = {
   transactions: initial?.transactions ?? ([] as any[]),
   budgets: initial?.budgets ?? ([] as any[]),
   rawEvents: initial?.rawEvents ?? ({} as Record<string, string>),
+  settings: initial?.settings ?? ({} as Record<string, any>),
 
   _persist() {
     if (process.env.NODE_ENV === "test") return;
     try {
-      fs.writeFileSync(FILE, JSON.stringify({ rules: this.rules, transactions: this.transactions, budgets: this.budgets, rawEvents: this.rawEvents }));
+      fs.writeFileSync(FILE, JSON.stringify({ rules: this.rules, transactions: this.transactions, budgets: this.budgets, rawEvents: this.rawEvents, settings: this.settings }));
     } catch { /* best-effort */ }
+  },
+
+  // User settings (billing cycle)
+  getSettings(userId: string) {
+    const s = this.settings[userId];
+    return s ? { user_id: userId, ...s } : null;
+  },
+  upsertSettings(userId: string, data: { billing_cycle_day?: number; billing_cycle_enabled?: boolean | null }) {
+    const cur = this.settings[userId] ?? {};
+    const next = {
+      ...cur,
+      ...data,
+      billing_cycle_day: data.billing_cycle_day ?? cur.billing_cycle_day ?? 20,
+      billing_cycle_enabled: data.billing_cycle_enabled !== undefined ? data.billing_cycle_enabled : (cur.billing_cycle_enabled ?? null),
+      updated_at: new Date().toISOString(),
+      created_at: cur.created_at ?? new Date().toISOString(),
+    };
+    this.settings[userId] = next;
+    this._persist();
+    return { user_id: userId, ...next };
   },
 
   // Budgets
@@ -113,12 +136,22 @@ export const mockStore = {
   },
 
   // Transactions
-  listTransactions(userId: string, filters?: { month?: string; category_id?: string; account_id?: string }) {
+  listTransactions(userId: string, filters?: { month?: string; from?: string; to?: string; category_id?: string; account_id?: string; limit?: number }) {
     let list = this.transactions.filter(t => t.user_id === userId);
-    if (filters?.month) list = list.filter(t => t.date?.startsWith(filters.month!));
+    if (filters?.month) {
+      list = list.filter(t => typeof t.date === "string" && t.date.startsWith(filters.month!));
+    } else if (filters?.from || filters?.to) {
+      list = list.filter(t => {
+        if (typeof t.date !== "string") return false;
+        const d = t.date.slice(0, 10);
+        if (filters?.from && d < filters.from) return false;
+        if (filters?.to && d > filters.to) return false;
+        return true;
+      });
+    }
     if (filters?.category_id) list = list.filter(t => t.category_id === filters.category_id);
     if (filters?.account_id) list = list.filter(t => t.account_id === filters.account_id);
-    return list.sort((a: any, b: any) => (b.date ?? "").localeCompare(a.date ?? "")).slice(0, 100);
+    return list.sort((a: any, b: any) => (b.date ?? "").localeCompare(a.date ?? "")).slice(0, filters?.limit ?? 100);
   },
   insertTransaction(userId: string, data: any) {
     const tx = { id: `mock-tx-${uuid()}`, user_id: userId, created_at: new Date().toISOString(), ...data };

@@ -28,10 +28,18 @@ function toTitleCase(s: string): string {
 export async function transactionRoutes(app: FastifyInstance) {
   app.get("/v1/transactions", async (req: any) => {
     const userId = getUserId(req);
-    const { month, category_id, account_id } = req.query ?? {};
-    if (isMockMode) return mockStore.listTransactions(userId, { month, category_id, account_id });
-    let q = supabase.from("transactions").select("*").eq("user_id", userId).order("date", { ascending: false }).limit(100);
-    if (month) {
+    const { month, category_id, account_id, from, to } = req.query ?? {};
+    const limitRaw = req.query?.limit;
+    const limit = Math.min(limitRaw ? parseInt(String(limitRaw), 10) : 100, 500) || 100;
+    if (isMockMode) return mockStore.listTransactions(userId, { month, category_id, account_id, from, to, limit });
+    let q = supabase.from("transactions").select("*").eq("user_id", userId).order("date", { ascending: false }).limit(limit);
+    if (from || to) {
+      if (from) q = q.gte("date", from);
+      if (to) {
+        const toExcl = new Date(new Date(`${to}T00:00:00Z`).getTime() + 86400000).toISOString().slice(0, 10);
+        q = q.lt("date", toExcl);
+      }
+    } else if (month) {
       const start = `${month}-01`;
       const end = new Date(new Date(start).setMonth(new Date(start).getMonth() + 1)).toISOString().slice(0, 10);
       q = q.gte("date", start).lt("date", end);

@@ -32,6 +32,10 @@
 - id, user_id, merchant_normalized, preferred_category_id, preferred_merchant_alias, created_at, hits_count
 - Matching exact normalized merchant -> override AI
 
+### UserSettings (ciclo de facturación) — migración `006_user_settings.sql`
+- user_id (uuid PK, FK auth.users), billing_cycle_day (int, 1-28, default 20), billing_cycle_enabled (boolean nullable: null=nunca configurado / false=rechazado / true=activo), created_at, updated_at
+- RLS: `using (auth.uid() = user_id)`
+
 ### Merchant (opcional)
 - id, user_id, name_normalized, alias, default_category_id
 
@@ -45,4 +49,4 @@
 - Policy: USING (user_id = auth.uid()) y WITH CHECK igual
 
 ## Migraciones
-- Ver `supabase/migrations/001_initial.sql` (generado en scaffold)
+- Ver `supabase/migrations/001_initial.sql` (generado en scaffold). `006_user_settings.sql` añade `user_settings` (ciclo de facturación).
