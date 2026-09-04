@@ -35,7 +35,7 @@ Agent #2 insights.
 Seguridad, performance, backups, analytics, publicación TestFlight/Play Internal.
 
 ## Feature transversal — Ciclo de facturación (20→20) ✅ (2026-09-03)
-- `GET/PUT /v1/settings` + tabla `user_settings` (migración 006). `balance`/`transactions`/`budgets` aceptan `from`/`to`; presupuestos **prorrateados por días** en rango. UI: `PeriodPager` (chevrons por ciclo), `DateRangePicker` (calendario custom, sin deps nativas), `CyclePrompt` (onboarding). Default: ciclo activo → ciclo actual; inactivo → mes; nunca configurado → prompt una vez.
+- `GET/PUT /v1/settings` + tabla `user_settings` (migración 006). `balance`/`transactions`/`budgets` aceptan `from`/`to`; presupuestos **prorrateados por días** en rango. UI: `PeriodPager` (chevrons por ciclo + toggle `Ciclo|Mes` para volver a la vista mensual), `DateRangePicker` (calendario custom, sin deps nativas, header con nombre de mes), `CyclePrompt` (onboarding). Default: ciclo activo → ciclo actual; inactivo → mes; nunca configurado → prompt una vez. (UX toggle 2026-09-04).
 
 ## Hito crítico §37
 INPUT "Compra $32.990 Lider tarjeta 1234" -> NORMALIZED -> AI/PARSER -> VALIDATED -> DB -> UI. Si esto funciona, el resto es agregar fuentes.

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
-import { C, R, SP } from "../../theme/tokens";
+import { C, R, SP, monthLabel } from "../../theme/tokens";
 import { MIcon } from "./MIcon";
 import { Sheet } from "./Sheet";
 import { shiftMonthStable, shiftDays, daysInMonth, DateRange } from "../../lib/billingCycle";
@@ -35,7 +35,6 @@ export function DateRangePicker({ visible, onClose, initial, onApply }: {
     ...Array.from({ length: dim }, (_, i) => i + 1),
   ];
 
-  const monthLabel = `${m} ${y}`;
   const nav = (d: number) => setMonth(shiftMonthStable(`${month}-01`, d).slice(0, 7));
 
   function pick(d: number) {
@@ -63,7 +62,7 @@ export function DateRangePicker({ visible, onClose, initial, onApply }: {
         <TouchableOpacity style={s.navBtn} onPress={() => nav(-1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <MIcon name="chevron-left" size={20} color={C.text} />
         </TouchableOpacity>
-        <Text style={s.navLabel}>{monthLabel}</Text>
+        <Text style={s.navLabel}>{monthLabel(month)}</Text>
         <TouchableOpacity style={s.navBtn} onPress={() => nav(1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <MIcon name="chevron-right" size={20} color={C.text} />
         </TouchableOpacity>

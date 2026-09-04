@@ -55,6 +55,7 @@ El usuario pidió que la pantalla principal (mes + balance general) quede **fija
 - `PeriodPager` reemplaza a `MonthPager` (chevrons → `shiftCycle` en rango, `shiftMonth` en mes). `App.tsx` carga `/v1/settings` al abrir: default ciclo si activo, mes si no, `CyclePrompt` si nunca configurado.
 - Backend: `balance`/`transactions`/`budgets` con `from`/`to`; `budgets` prorrateados por días en rango; migración 006 `user_settings` + `GET/PUT /v1/settings`.
 - Verificado: `171/171` (22 files), `tsc` 0. Migración 006 aplicada + **push → Railway autodeploy OK** (health prod `0.4.1-finan`).
+- **UX (2026-09-04)**: `PeriodPager` añade segmented **`Ciclo|Mes`** (volver a vista mensual con el ciclo activo); `DateRangePicker` header usa `monthLabel(month)` → nombre del mes (`Septiembre 2026`). Verificado on-device (`uiautomator`, APK release).
 
 ### Pendiente aplicar
 ⏳ Donut "Distribución por Categoría" (v1.1, react-native-svg + prebuild)

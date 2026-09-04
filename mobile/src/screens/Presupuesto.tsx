@@ -113,7 +113,7 @@ export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive }: {
         )}
       </View>
 
-      <Text style={s.hint}>{rangeActive ? "Vista de ciclo (solo lectura) — toca el calendario para volver al mes" : "Desliza para borrar · Toca para editar"}</Text>
+      <Text style={s.hint}>{rangeActive ? "Vista de ciclo (solo lectura) — usa el selector «Mes» arriba para editar" : "Desliza para borrar · Toca para editar"}</Text>
 
       {rows.length === 0 ? (
         <View style={s.empty}>

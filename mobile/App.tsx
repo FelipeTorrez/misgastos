@@ -139,6 +139,8 @@ export default function App() {
 
   const month = period.type === "month" ? period.month : period.from.slice(0, 7);
   const rangeActive = period.type === "range";
+  const cycleEnabled = settings?.billing_cycle_enabled === true;
+  const cycleRange = cycleEnabled && settings ? currentCycle(settings.billing_cycle_day) : null;
 
   let content;
   if (secondary) {
@@ -193,7 +195,7 @@ export default function App() {
       {!secondary && (
         <View style={s.fixedTop}>
           <View style={s.monthWrap}>
-            <PeriodPager period={period} onChange={setPeriod} onOpenRange={() => setRangeOpen(true)} showClear={!isDefault} onClear={resetToDefault} />
+            <PeriodPager period={period} onChange={setPeriod} onOpenRange={() => setRangeOpen(true)} showClear={!isDefault && !cycleEnabled} onClear={resetToDefault} cycleEnabled={cycleEnabled} cycleRange={cycleRange} />
           </View>
           <BalanceHero
             income={balance.income}
