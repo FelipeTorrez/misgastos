@@ -54,7 +54,7 @@ El usuario pidió que la pantalla principal (mes + balance general) quede **fija
 ### Feature: filtro de ciclo de facturación (20→20) — ✅ implementado (web/back, 2026-09-03)
 - `PeriodPager` reemplaza a `MonthPager` (chevrons → `shiftCycle` en rango, `shiftMonth` en mes). `App.tsx` carga `/v1/settings` al abrir: default ciclo si activo, mes si no, `CyclePrompt` si nunca configurado.
 - Backend: `balance`/`transactions`/`budgets` con `from`/`to`; `budgets` prorrateados por días en rango; migración 006 `user_settings` + `GET/PUT /v1/settings`.
-- Verificado: `171/171` (22 files), `tsc` 0. Pendiente push → Railway.
+- Verificado: `171/171` (22 files), `tsc` 0. Migración 006 aplicada + **push → Railway autodeploy OK** (health prod `0.4.1-finan`).
 
 ### Pendiente aplicar
 ⏳ Donut "Distribución por Categoría" (v1.1, react-native-svg + prebuild)
