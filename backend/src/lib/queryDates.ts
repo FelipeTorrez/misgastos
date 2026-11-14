@@ -26,7 +26,8 @@ function rangeOk(v: { from?: string; to?: string }): boolean {
   return true;
 }
 
-const rangeRefine = { message: "to debe ser >= from", path: ["to"] as const };
+// path mutable: ZodCustomIssue exige (string|number)[], un tuple `as const` no compila
+const rangeRefine = { message: "to debe ser >= from", path: ["to"] };
 
 export const BalanceQuery = z
   .object({
