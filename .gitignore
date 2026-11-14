@@ -28,6 +28,13 @@ mobile/192.168.1.xx
 mobile/AndroidManifest.backup.xml
 mobile/app.json.bak
 
+# Artefactos de agentes de código (locales, no del producto)
+.agents/
+.claude/
+.opencode/
+opencode.json
+skills-lock.json
+
 # OS
 .DS_Store
 Thumbs.db
