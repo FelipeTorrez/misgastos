@@ -3,13 +3,14 @@ import { supabase, getUserId, isMockMode } from "../../lib/supabase.js";
 import { mockStore } from "../../lib/mockStore.js";
 import { SYSTEM_CATEGORIES } from "../categories/routes.js";
 import { monthOverlaps, rangeDays, monthBounds } from "../../lib/dateRange.js";
+import { BalanceQuery } from "../../lib/queryDates.js";
 
 export async function balanceRoutes(app: FastifyInstance) {
-  app.get("/v1/balance", async (req: any) => {
+  app.get("/v1/balance", async (req: any, reply: any) => {
+    const parsed = BalanceQuery.safeParse(req.query ?? {});
+    if (!parsed.success) return reply.status(400).send(parsed.error.flatten());
     const userId = getUserId(req);
-    const month = req.query?.month; // YYYY-MM
-    const from = req.query?.from;   // YYYY-MM-DD (inclusive)
-    const to = req.query?.to;       // YYYY-MM-DD (inclusive)
+    const { month, from, to } = parsed.data;
     let rows: any[];
     let rawForByCat: any[] = [];
     if (isMockMode) {
