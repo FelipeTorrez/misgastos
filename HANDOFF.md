@@ -170,6 +170,12 @@ Durante la sesión del 25/08 hubo **OTRA IA/sesión editando este mismo repo sim
 
 ## 4. Cambios de la última sesión (lo más reciente primero)
 
+-21. **MG-002 / MG-005 / MG-006 (tercera tanda del orquestador)** — 2026-11-14 — `backend/src/modules/ingestion/dedup.ts`, `backend/src/modules/budgets/routes.ts`, `backend/src/modules/balance/routes.ts`, `backend/src/lib/dateRange.ts`:
+    - **MG-005** (4/5, bajo): `/v1/budgets` calculaba el fin de mes con `new Date(month).setMonth(+1)` (zona local) → con `TZ=America/Santiago` el 2026-03 cortaba en el 29 y perdía 29/30/31. Ahora usa `monthBounds()`.
+    - **MG-002** (4/5, medio): **la deduplicación no funcionaba en Chile**. `timeDiffMinutes` comparaba la hora de pared del correo/notificación contra `getUTCHours()` del timestamptz guardado: la diferencia es siempre 180–240 min, así que la ventana de 60 min nunca matcheaba y email + notificación del mismo gasto creaban dos transacciones. Nuevo `localParts(iso, tz)` con `Intl.DateTimeFormat` y `APP_TZ` (default `America/Santiago`); fixtures actualizados a hora local + caso DST verano (15:30 local 2026-01-10 = 18:30Z).
+    - **MG-006** (3/5, medio): `/v1/balance` sin `month`/`from`/`to` sumaba **todo el histórico** pero leía presupuestos del mes en curso (incoherente, `weekly` vacío). Ahora defaultea al mes en curso con `currentMonthLocal()` (reloj local — **no** `toISOString()`, que en Chile devuelve el mes siguiente después de las 21:00 del último día).
+    - **Verificación**: `vitest 188/188 (24 files)`, `tsc --noEmit` 0 en cada merge. Prod verificado: `/v1/balance` sin params → `expense 841299`, `weekly` con 2 semanas (antes vacío), igual a `?month=2026-11`.
+
 -20. **Orquestador ideas→código: MG-001 / MG-003 / MG-004 + fix de tipos** — 2026-11-14 — `backend/src/lib/queryDates.ts`, `backend/src/modules/{transactions,balance}/routes.ts`, `backend/src/lib/dateRange.ts`, `mobile/scripts/build-apk.sh`, `.gitignore`:
     - **Pipeline** (`C:\Users\pipen\orchestrator`): brain hermes → ideas con score/risk/effort → coder OpenCode en rama `auto/<id>-<slug>` → `npm test` → merge a `main` solo si verde. Sin push (a propósito).
     - **MG-001** (5/5, bajo): fin de mes en `?month` con helper UTC (`monthBounds`). Antes `new Date('YYYY-MM-01').setMonth(+1)` daba `2026-03-29` y marzo perdía 29/30/31. 10 tests nuevos.
