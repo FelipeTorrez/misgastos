@@ -28,6 +28,16 @@ function makeTable(tables: any, tname: string) {
     limit: (n: number) => { state.limit = n; return b; },
     order: (f: string, o: any) => { state.order = { f, o }; return b; },
     select: (_c: string) => b,
+    update: (p: any) => { state.patch = p; return b; },
+    single: () => {
+      const rows = apply();
+      if (state.patch) {
+        if (!rows.length) return { data: null, error: { message: "not found" } };
+        Object.assign(rows[0], state.patch);
+        return { data: rows[0], error: null };
+      }
+      return { data: rows[0] ?? null, error: null };
+    },
     then: (cb: any) => cb({ data: apply(), error: null }),
   };
   return b;
@@ -59,5 +69,45 @@ describe("GET /v1/transactions?month — fin de mes", () => {
     expect(res.statusCode).toBe(200);
     const list = res.json();
     expect(list.map((t: any) => t.id).sort()).toEqual(["m29", "m30", "m31"]);
+  });
+});
+
+describe("PATCH /v1/transactions/:id — whitelist zod", () => {
+  async function buildApp() {
+    const app = Fastify();
+    await app.register(transactionRoutes);
+    return app;
+  }
+
+  it("acepta {status:'confirmed'} → 200 y actualiza", async () => {
+    db.transactions = [
+      { id: "t1", user_id: "u1", date: "2026-03-10", amount: 1000, type: "expense", merchant: "Lider", status: "pending_review" },
+    ];
+    const app = await buildApp();
+    const res = await app.inject({ method: "PATCH", url: "/v1/transactions/t1", payload: { status: "confirmed" } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe("confirmed");
+    expect(db.transactions[0].status).toBe("confirmed");
+  });
+
+  it("rechaza user_id → 400 y conserva user_id/amount", async () => {
+    db.transactions = [
+      { id: "t1", user_id: "u1", date: "2026-03-10", amount: 1000, type: "expense", merchant: "Lider", status: "pending_review" },
+    ];
+    const app = await buildApp();
+    const res = await app.inject({ method: "PATCH", url: "/v1/transactions/t1", payload: { user_id: "otro", amount: 500 } });
+    expect(res.statusCode).toBe(400);
+    expect(db.transactions[0].user_id).toBe("u1");
+    expect(db.transactions[0].amount).toBe(1000);
+  });
+
+  it("rechaza clave desconocida → 400", async () => {
+    db.transactions = [
+      { id: "t1", user_id: "u1", date: "2026-03-10", amount: 1000, type: "expense", merchant: "Lider", status: "pending_review" },
+    ];
+    const app = await buildApp();
+    const res = await app.inject({ method: "PATCH", url: "/v1/transactions/t1", payload: { categoria_typo: 1 } });
+    expect(res.statusCode).toBe(400);
+    expect(db.transactions[0].status).toBe("pending_review");
   });
 });
