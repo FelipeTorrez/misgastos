@@ -59,7 +59,7 @@ describe("Phase 5 — Deduplicación integración", ()=>{
 
   it("segundo igual (email+notificación) detecta duplicado §15", async ()=>{
     // simula existente
-    txStore = [{ id:"orig-1", amount:32990, date:"2026-08-24T15:30:00Z", merchant:"Lider", type:"expense", status:"confirmed"}];
+    txStore = [{ id:"orig-1", amount:32990, date:"2026-08-24T19:30:00Z", merchant:"Lider", type:"expense", status:"confirmed"}];
     const r = await app.inject({ method:"POST", url:"/v1/ingestion/notification", payload:{ raw_content:"Compra por $32.990 en Lider - 24/08/2026 15:32", external_id:"n1"}});
     const j = JSON.parse(r.body);
     expect(j.dedup.is_duplicate).toBe(true);
@@ -70,7 +70,7 @@ describe("Phase 5 — Deduplicación integración", ()=>{
   });
 
   it("mismo monto distinto día no es duplicado", async ()=>{
-    txStore = [{ id:"orig-1", amount:32990, date:"2026-08-24T15:30:00Z", merchant:"Lider", type:"expense", status:"confirmed"}];
+    txStore = [{ id:"orig-1", amount:32990, date:"2026-08-24T19:30:00Z", merchant:"Lider", type:"expense", status:"confirmed"}];
     const r = await app.inject({ method:"POST", url:"/v1/ingestion/email", payload:{ raw_content:"Compra por $32.990 en Lider - 25/08/2026 15:30", external_id:"e2"}});
     expect(JSON.parse(r.body).dedup.is_duplicate).toBe(false);
   });

@@ -27,7 +27,7 @@ describe("Conjunta 4+5 — AI categoriza y dedup no duplica (pipeline directo)",
       user_rules: [],
       locale: "es-CL"
     });
-    const existing = [{ id:"orig-1", amount: ai1.amount, date:"2026-08-24T15:30:00Z", merchant: ai1.merchant, type:"expense", status:"confirmed"}];
+    const existing = [{ id:"orig-1", amount: ai1.amount, date:"2026-08-24T19:30:00Z", merchant: ai1.merchant, type:"expense", status:"confirmed"}];
     const p2 = parseEmail("Compra por $32.990 en Lider - 24/08/2026 15:32");
     const ai2 = await createAIProvider("mock").classify({
       normalized_text: "compra en lider",
@@ -44,7 +44,7 @@ describe("Conjunta 4+5 — AI categoriza y dedup no duplica (pipeline directo)",
   });
 
   it("distinto comercio no dedupa aunque misma AI categoría", async ()=>{
-    const existing = [{ id:"orig", amount:32990, date:"2026-08-24T15:30:00Z", merchant:"Lider", type:"expense", status:"confirmed"}];
+    const existing = [{ id:"orig", amount:32990, date:"2026-08-24T19:30:00Z", merchant:"Lider", type:"expense", status:"confirmed"}];
     const p = parseEmail("Compra por $32.990 en Jumbo - 24/08/2026 15:30");
     const cand = { amount: p.amount!, date: p.date, merchant: p.merchant, type:"expense" };
     expect(isDuplicate(cand as any, existing as any)).toBeNull();
@@ -63,7 +63,7 @@ describe("Conjunta 4+5 — AI categoriza y dedup no duplica (pipeline directo)",
     expect(ai1.is_recurring_candidate).toBe(true);
     const p2 = parseEmail("Compra por $7.490 en Spotify - 24/08/2026 10:02");
     const cand = { amount: p2.amount!, date: p2.date, time: p2.time, merchant: p2.merchant, type:"expense" };
-    const dup = isDuplicate(cand as any, [{ id:"s1", amount:7490, date:"2026-08-24T10:00:00Z", merchant:"Spotify", type:"expense", status:"confirmed"}] as any);
+    const dup = isDuplicate(cand as any, [{ id:"s1", amount:7490, date:"2026-08-24T14:00:00Z", merchant:"Spotify", type:"expense", status:"confirmed"}] as any);
     expect(dup?.id).toBe("s1");
   });
 
@@ -73,7 +73,7 @@ describe("Conjunta 4+5 — AI categoriza y dedup no duplica (pipeline directo)",
     expect(p1.amount).toBe(45000);
     expect(p2.amount).toBe(45000);
     const cand = { amount: p2.amount!, date: p2.date, time: p2.time, merchant: p2.merchant, type:"expense" };
-    const dup = isDuplicate(cand as any, [{ id:"orig", amount:45000, date:"2026-08-24T12:00:00Z", merchant:"Lider", type:"expense", status:"confirmed"}] as any);
+    const dup = isDuplicate(cand as any, [{ id:"orig", amount:45000, date:"2026-08-24T16:00:00Z", merchant:"Lider", type:"expense", status:"confirmed"}] as any);
     expect(dup?.id).toBe("orig");
   });
 });

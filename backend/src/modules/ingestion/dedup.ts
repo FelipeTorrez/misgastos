@@ -33,11 +33,28 @@ function sameDay(a: string | null, b: string): boolean {
   return da === db;
 }
 
+function localParts(iso: string, tz: string): { h: number; m: number } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(new Date(iso));
+  let h = 0, m = 0;
+  for (const p of parts) {
+    if (p.type === "hour") h = Number(p.value) % 24;
+    if (p.type === "minute") m = Number(p.value);
+  }
+  return { h, m };
+}
+
 function timeDiffMinutes(aTime: string | null | undefined, bDateIso: string): number | null {
   if (!aTime) return null;
   const [ah, am] = aTime.split(":").map(Number);
-  const b = new Date(bDateIso);
-  const bh = b.getUTCHours(), bm = b.getUTCMinutes();
+  const tz = process.env.APP_TZ ?? "America/Santiago";
+  // candidate.time es hora local (reloj de pared del correo/notificación);
+  // comparar contra las partes locales del timestamptz guardado, no UTC.
+  const { h: bh, m: bm } = localParts(bDateIso, tz);
   return Math.abs(ah * 60 + am - (bh * 60 + bm));
 }
 
