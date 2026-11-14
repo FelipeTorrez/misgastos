@@ -1,6 +1,8 @@
 # HANDOFF — Contexto completo para continuar desarrollo
 
-> Última actualización: 2026-09-04 — **UX ciclo: toggle Ciclo|Mes + nombre del mes en el calendario** ✅ — `171/171` tests (22 files), `tsc --noEmit` 0. `PeriodPager` añade segmented `Ciclo|Mes` (permite volver a la vista mensual con el ciclo activo), `DateRangePicker` header usa `monthLabel(month)` → "Septiembre 2026". Version `0.4.1-finan`. Ver §4 (-19).
+> Última actualización: 2026-11-14 — **Orquestador automático: MG-001 / MG-003 / MG-004 mergeados a main** ✅ — `185/185` tests (24 files), `tsc --noEmit` 0. El pipeline (hermes brain + opencode coder) propone ideas, las implementa en rama aislada y mergea solo con tests verdes. MG-003 dejó `tsc` roto (`path` readonly en zod) → corregido, y `npx tsc --noEmit` quedó como gate obligatorio del pipeline. Ver §4 (-20).
+>
+> Anterior (2026-09-04) — **UX ciclo: toggle Ciclo|Mes + nombre del mes en el calendario** ✅ — `171/171` tests (22 files), `tsc --noEmit` 0. `PeriodPager` añade segmented `Ciclo|Mes` (permite volver a la vista mensual con el ciclo activo), `DateRangePicker` header usa `monthLabel(month)` → "Septiembre 2026". Version `0.4.1-finan`. Ver §4 (-19).
 > Siguiente: **Cierre verificado OK** — quedó una app que apunta a Railway (`https://misgastos-production-b8c6.up.railway.app`); APK release instalado. **Nuevo (2026-09-04)**: UX del ciclo — toggle `Ciclo|Mes` en `PeriodPager` (volver a vista mensual con ciclo activo) + nombre del mes en el `DateRangePicker`; `171/171`, `tsc` 0, APK release instalado y verificado on-device (`uiautomator`: toggle + label `20 ago — 19 sep 2026` + header `Septiembre 2026`). Pendiente opcional: normalizar a mediodía los `date` de los gastos ya creados por ingesta (ver §4 -16) y evaluar `.limit(100)` si un mes supera 100 movimientos.
 
 > ⚠️ Cambió la arquitectura de navegación: ahora hay un **shell persistente** (mes + balance hero + sub-tabs anidados + FAB global). Detalle abajo en §6.
@@ -167,6 +169,16 @@ Durante la sesión del 25/08 hubo **OTRA IA/sesión editando este mismo repo sim
 ---
 
 ## 4. Cambios de la última sesión (lo más reciente primero)
+
+-20. **Orquestador ideas→código: MG-001 / MG-003 / MG-004 + fix de tipos** — 2026-11-14 — `backend/src/lib/queryDates.ts`, `backend/src/modules/{transactions,balance}/routes.ts`, `backend/src/lib/dateRange.ts`, `mobile/scripts/build-apk.sh`, `.gitignore`:
+    - **Pipeline** (`C:\Users\pipen\orchestrator`): brain hermes → ideas con score/risk/effort → coder OpenCode en rama `auto/<id>-<slug>` → `npm test` → merge a `main` solo si verde. Sin push (a propósito).
+    - **MG-001** (5/5, bajo): fin de mes en `?month` con helper UTC (`monthBounds`). Antes `new Date('YYYY-MM-01').setMonth(+1)` daba `2026-03-29` y marzo perdía 29/30/31. 10 tests nuevos.
+    - **MG-003** (3/5, bajo): `month`/`from`/`to` validados con zod en `queryDates.ts` → **400** con detalle en vez de lista vacía. `from>to` también 400.
+    - **MG-004** (5/5, bajo): `PATCH /v1/transactions/:id` con whitelist zod (antes reenviaba el body completo → `user_id` inmutable provocaba `42703` de PostgREST). 7 tests nuevos.
+    - **Bug introducido por MG-003 y corregido**: `path: ["to"] as const` → tuple `readonly` no asignable a `ZodCustomIssue.path`; `tsc` fallaba (los tests no lo detectaban). Fix: `path: ["to"]`.
+    - **Gate nuevo en el pipeline**: `npx tsc --noEmit` agregado a `test_cmds` — nunca más un merge con tipos roto.
+    - **Dev build en el celular** (`mobile/scripts/build-apk.sh dev|release`): `assembleDebug` + `adb install` + `adb reverse` 8081/3000 + Metro con `EXPO_PUBLIC_API_URL=http://localhost:3000`. Ojo OneDrive: el caché de Gradle crea hardlinks a `node_modules/*/android/build` y falla con `Cannot snapshot ...libfbjni.so: not a regular file` → borrar `~/.gradle/caches/8.13/transforms/<hash>` y `expo-modules-core/android/build/intermediates/cxx`, rebuildear (`--no-watch-fs` no lo arregla).
+    - **Verificación**: `vitest 185/185 (24 files)`, `tsc --noEmit` 0, `npm run build` OK. En device: balance idéntico a prod (`1.600.000 / 1.260.337 / 339.663`) y `?month=2026-13` → 400 en local.
 
 -19. **UX ciclo: toggle Ciclo|Mes + nombre del mes en el calendario** — 2026-09-04 — `mobile/App.tsx`, `mobile/src/components/ui/{PeriodPager,DateRangePicker}.tsx`, `mobile/src/screens/Presupuesto.tsx`:
     - **Problema**: con el ciclo activo (`billing_cycle_enabled=true`), `defaultPeriod()` era un rango, así que en el ciclo por defecto `isDefault===true` → `showClear=false` → el botón `×` (volver al default) nunca se mostraba; y aunque apareciera (rango custom), `resetToDefault()` volvía al **ciclo**, nunca a la vista mensual. Solo `Config` (toggle ciclo) permitía volver a mes. Además el header del `DateRangePicker` mostraba el mes como número (`"9 2026"`) en vez del nombre.
