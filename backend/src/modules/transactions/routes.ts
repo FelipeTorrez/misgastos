@@ -27,6 +27,19 @@ function toTitleCase(s: string): string {
   return s.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
 }
 
+const PatchTx = z.object({
+  merchant: z.string().min(1).max(100).optional(),
+  amount: z.number().int().positive().optional(),
+  category_id: z.string().uuid().nullable().optional(),
+  status: z.enum(["pending_ai","pending_review","confirmed","corrected","ignored","duplicate"]).optional(),
+  payment_method: z.enum(["debit_card","credit_card","transfer","cash","unknown"]).optional(),
+  direction: z.enum(["in","out","internal","none"]).optional(),
+  counterparty: z.string().max(100).nullable().optional(),
+  confidence: z.number().min(0).max(1).optional(),
+  account_id: z.string().uuid().nullable().optional(),
+  date: z.string().optional(),
+}).strict();
+
 export async function transactionRoutes(app: FastifyInstance) {
   app.get("/v1/transactions", async (req: any, reply: any) => {
     const parsed = TransactionsQuery.safeParse(req.query ?? {});
@@ -79,32 +92,34 @@ export async function transactionRoutes(app: FastifyInstance) {
 
   app.patch("/v1/transactions/:id", async (req: any, reply) => {
     const userId = getUserId(req);
-    const body = req.body as any;
+    const body = { ...((req.body ?? {}) as any) };
     const updateRule = body.update_rule !== false;
-    const patchData: any = { ...body };
-    delete patchData.update_rule;
+    delete body.update_rule;
+    const parsed = PatchTx.safeParse(body);
+    if (!parsed.success) return reply.status(400).send(parsed.error.flatten());
+    const patchData: any = { ...parsed.data };
     patchData.status = patchData.status ?? "corrected";
     if (isMockMode) {
       const tx = mockStore.updateTransaction(userId, req.params.id, patchData);
       if (!tx) return reply.status(404).send({ error: "transaction not found" });
       // Learn rule on category correction (solo si update_rule !== false)
-      if (updateRule && body.category_id && tx.merchant) {
+      if (updateRule && parsed.data.category_id && tx.merchant) {
         const norm = tx.merchant.toLowerCase().trim();
         const existing = mockStore.findRule(userId, norm);
         if (existing) {
-          mockStore.updateRule(userId, existing.id, { preferred_category_id: body.category_id });
+          mockStore.updateRule(userId, existing.id, { preferred_category_id: parsed.data.category_id });
           mockStore.incrementRuleHits(existing.id);
         } else {
-          mockStore.upsertRule(userId, { merchant_normalized: norm, preferred_category_id: body.category_id });
+          mockStore.upsertRule(userId, { merchant_normalized: norm, preferred_category_id: parsed.data.category_id });
         }
       }
       return { ...tx, mocked: true };
     }
     const { data, error } = await supabase.from("transactions").update({ ...patchData, updated_at: new Date().toISOString() }).eq("id", req.params.id).eq("user_id", userId).select().single();
     if (error) return reply.status(400).send({ error: error.message });
-    if (updateRule && body.category_id && data.merchant) {
+    if (updateRule && parsed.data.category_id && data.merchant) {
       const norm = data.merchant.toLowerCase().trim();
-      await supabase.from("rules").upsert({ user_id: userId, merchant_normalized: norm, preferred_category_id: body.category_id }, { onConflict: "user_id,merchant_normalized" });
+      await supabase.from("rules").upsert({ user_id: userId, merchant_normalized: norm, preferred_category_id: parsed.data.category_id }, { onConflict: "user_id,merchant_normalized" });
     }
     return data;
   });
