@@ -2,7 +2,7 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { supabase, getUserId, isMockMode } from "../../lib/supabase.js";
 import { mockStore } from "../../lib/mockStore.js";
-import { monthOverlaps } from "../../lib/dateRange.js";
+import { monthBounds, monthOverlaps } from "../../lib/dateRange.js";
 
 const CreateBudget = z.object({
   category_id: z.string().uuid().nullable(), // null = global
@@ -103,9 +103,8 @@ export async function budgetRoutes(app: FastifyInstance) {
     } else {
       const { data: bs } = await supabase.from("budgets").select("*, categories(name, slug)").eq("user_id", userId).eq("month", month);
       budgets = bs ?? [];
-      const start = month;
-      const end = new Date(new Date(month).setMonth(new Date(month).getMonth()+1)).toISOString().slice(0,10);
-      const { data: ts } = await supabase.from("transactions").select("amount, category_id, type, status").eq("user_id", userId).eq("type","expense").gte("date", start).lt("date", end);
+      const { start, endExcl } = monthBounds(month.slice(0, 7));
+      const { data: ts } = await supabase.from("transactions").select("amount, category_id, type, status").eq("user_id", userId).eq("type","expense").gte("date", start).lt("date", endExcl);
       txs = ((ts ?? []) as any[]).filter(t => t.status !== "duplicate" && t.status !== "ignored");
     }
     // calcular spent

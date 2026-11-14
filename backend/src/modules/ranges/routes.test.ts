@@ -1,3 +1,4 @@
+process.env.TZ = "America/Santiago";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import Fastify from "fastify";
 
@@ -117,5 +118,20 @@ describe("Filtro rango 20→20 — endpoints", () => {
     expect(b.spent).toBe(27000);
     expect(b.pct).toBe(Math.round((27000 / expectedAmt) * 100));
     expect(b.range).toEqual({ from: "2026-08-20", to: "2026-09-19" });
+  });
+
+  it("presupuesto mensual incluye gasto del 31 con TZ America/Santiago (monthBounds TZ-safe)", async () => {
+    db.budgets = [
+      { id: "b1", user_id: "u1", category_id: CAT_A, amount: 300000, month: "2026-03-01", period: "monthly" },
+    ];
+    db.transactions = [
+      { id: "t31", user_id: "u1", amount: 1000, type: "expense", date: "2026-03-31", status: "confirmed", category_id: CAT_A },
+    ];
+    const app = await makeApp([budgetRoutes]);
+    const res = await app.inject({ method: "GET", url: "/v1/budgets?month=2026-03-01" });
+    const list = res.json();
+    expect(res.statusCode).toBe(200);
+    expect(list.length).toBe(1);
+    expect(list[0].spent).toBe(1000);
   });
 });
