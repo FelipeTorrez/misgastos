@@ -3,6 +3,7 @@ import { z } from "zod";
 import { supabase, getUserId, isMockMode } from "../../lib/supabase.js";
 import { mockStore } from "../../lib/mockStore.js";
 import { monthBounds } from "../../lib/dateRange.js";
+import { TransactionsQuery } from "../../lib/queryDates.js";
 
 const CreateTx = z.object({
   account_id: z.string().uuid().nullable().optional(),
@@ -27,11 +28,12 @@ function toTitleCase(s: string): string {
 }
 
 export async function transactionRoutes(app: FastifyInstance) {
-  app.get("/v1/transactions", async (req: any) => {
+  app.get("/v1/transactions", async (req: any, reply: any) => {
+    const parsed = TransactionsQuery.safeParse(req.query ?? {});
+    if (!parsed.success) return reply.status(400).send(parsed.error.flatten());
     const userId = getUserId(req);
-    const { month, category_id, account_id, from, to } = req.query ?? {};
-    const limitRaw = req.query?.limit;
-    const limit = Math.min(limitRaw ? parseInt(String(limitRaw), 10) : 100, 500) || 100;
+    const { month, category_id, account_id, from, to } = parsed.data;
+    const limit = parsed.data.limit ?? 100;
     if (isMockMode) return mockStore.listTransactions(userId, { month, category_id, account_id, from, to, limit });
     let q = supabase.from("transactions").select("*").eq("user_id", userId).order("date", { ascending: false }).limit(limit);
     if (from || to) {
