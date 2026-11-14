@@ -2,7 +2,7 @@ import { FastifyInstance } from "fastify";
 import { supabase, getUserId, isMockMode } from "../../lib/supabase.js";
 import { mockStore } from "../../lib/mockStore.js";
 import { SYSTEM_CATEGORIES } from "../categories/routes.js";
-import { monthOverlaps, rangeDays, monthBounds } from "../../lib/dateRange.js";
+import { monthOverlaps, rangeDays, monthBounds, currentMonthLocal } from "../../lib/dateRange.js";
 import { BalanceQuery } from "../../lib/queryDates.js";
 
 export async function balanceRoutes(app: FastifyInstance) {
@@ -11,6 +11,9 @@ export async function balanceRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.status(400).send(parsed.error.flatten());
     const userId = getUserId(req);
     const { month, from, to } = parsed.data;
+    // Sin month/from/to: default al mes en curso (reloj local, no UTC).
+    // from/to tienen prioridad sobre month.
+    const effMonth = month ?? currentMonthLocal();
     let rows: any[];
     let rawForByCat: any[] = [];
     if (isMockMode) {
@@ -23,7 +26,7 @@ export async function balanceRoutes(app: FastifyInstance) {
           if (to && d > to) return false;
           return true;
         });
-      } else if (month) list = list.filter(t => typeof t.date === "string" && t.date.startsWith(month));
+      } else list = list.filter(t => typeof t.date === "string" && t.date.startsWith(effMonth));
       rows = list.map(t => ({ amount: t.amount, type: t.type, date: t.date }));
       rawForByCat = list;
     } else {
@@ -34,8 +37,8 @@ export async function balanceRoutes(app: FastifyInstance) {
           const toExcl = new Date(new Date(`${to}T00:00:00Z`).getTime() + 86400000).toISOString().slice(0, 10);
           q = q.lt("date", toExcl);
         }
-      } else if (month) {
-        const { start, endExcl: end } = monthBounds(month);
+      } else {
+        const { start, endExcl: end } = monthBounds(effMonth);
         q = q.gte("date", start).lt("date", end);
       }
       const { data } = await q;
@@ -52,7 +55,7 @@ export async function balanceRoutes(app: FastifyInstance) {
     const balance = income - expense;
     // evolución semanal: solo en modo mes (S1-S5 es semanal-mensual, no aplica a un rango arbitrario)
     let weekly: any[] = [];
-    if (month && !from && !to && rows.length) {
+    if (!from && !to && rows.length) {
       const weeks: Record<string, {income:number, expense:number}> = {};
       for (const t of rows) {
         const d = new Date(t.date);
@@ -105,7 +108,7 @@ export async function balanceRoutes(app: FastifyInstance) {
         }
       }
     } else {
-      const budgetMonth = month ? `${month}-01` : new Date().toISOString().slice(0,7) + "-01";
+      const budgetMonth = `${effMonth}-01`;
       if (isMockMode) {
         budgets = mockStore.listBudgets(userId, budgetMonth);
       } else {

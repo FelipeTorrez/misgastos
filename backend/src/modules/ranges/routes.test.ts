@@ -134,4 +134,29 @@ describe("Filtro rango 20→20 — endpoints", () => {
     expect(list.length).toBe(1);
     expect(list[0].spent).toBe(1000);
   });
+
+  it("balance sin query defaultea al mes en curso (reloj local)", async () => {
+    vi.useFakeTimers();
+    try {
+      // Fija el reloj local al 15/09/2026 → mes en curso "2026-09"
+      // (constructor local, respeta TZ America/Santiago).
+      vi.setSystemTime(new Date(2026, 8, 15, 12, 0, 0));
+      db.transactions = [
+        { id: "t-ago", user_id: "u1", amount: 99999, type: "expense", date: "2026-08-10T12:00:00Z", status: "confirmed", category_id: CAT_A },
+        { id: "t-sep-exp", user_id: "u1", amount: 20000, type: "expense", date: "2026-09-05T12:00:00Z", status: "confirmed", category_id: CAT_B },
+        { id: "t-sep-inc", user_id: "u1", amount: 50000, type: "income", date: "2026-09-10T12:00:00Z", status: "confirmed", category_id: null },
+      ];
+      const app = await makeApp([balanceRoutes]);
+      const res = await app.inject({ method: "GET", url: "/v1/balance" });
+      const body = res.json();
+      expect(res.statusCode).toBe(200);
+      expect(body.expense).toBe(20000); // solo mes en curso, t-ago excluido
+      expect(body.income).toBe(50000);
+      expect(body.balance).toBe(30000);
+      expect(body.weekly.length).toBeGreaterThan(0); // weekly poblado en modo mes
+      expect(body.range).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

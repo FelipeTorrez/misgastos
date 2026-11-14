@@ -69,3 +69,12 @@ export function monthBounds(month: string): { start: string; endExcl: string } {
   const endExcl = fmt(addDays(toDate(start), daysInMonth(y!, m!)));
   return { start, endExcl };
 }
+
+/**
+ * Mes en curso "YYYY-MM" según el reloj LOCAL (no UTC).
+ * No usar toISOString(): en Chile, a las 21:00 del último día del mes
+ * ya devuelve el mes siguiente.
+ */
+export function currentMonthLocal(now: Date = new Date()): string {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
