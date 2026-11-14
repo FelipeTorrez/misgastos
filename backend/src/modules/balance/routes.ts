@@ -2,7 +2,7 @@ import { FastifyInstance } from "fastify";
 import { supabase, getUserId, isMockMode } from "../../lib/supabase.js";
 import { mockStore } from "../../lib/mockStore.js";
 import { SYSTEM_CATEGORIES } from "../categories/routes.js";
-import { monthOverlaps, rangeDays } from "../../lib/dateRange.js";
+import { monthOverlaps, rangeDays, monthBounds } from "../../lib/dateRange.js";
 
 export async function balanceRoutes(app: FastifyInstance) {
   app.get("/v1/balance", async (req: any) => {
@@ -34,8 +34,7 @@ export async function balanceRoutes(app: FastifyInstance) {
           q = q.lt("date", toExcl);
         }
       } else if (month) {
-        const start = `${month}-01`;
-        const end = new Date(new Date(start).setMonth(new Date(start).getMonth()+1)).toISOString().slice(0,10);
+        const { start, endExcl: end } = monthBounds(month);
         q = q.gte("date", start).lt("date", end);
       }
       const { data } = await q;

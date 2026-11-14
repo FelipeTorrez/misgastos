@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { supabase, getUserId, isMockMode } from "../../lib/supabase.js";
 import { mockStore } from "../../lib/mockStore.js";
+import { monthBounds } from "../../lib/dateRange.js";
 
 const CreateTx = z.object({
   account_id: z.string().uuid().nullable().optional(),
@@ -40,8 +41,7 @@ export async function transactionRoutes(app: FastifyInstance) {
         q = q.lt("date", toExcl);
       }
     } else if (month) {
-      const start = `${month}-01`;
-      const end = new Date(new Date(start).setMonth(new Date(start).getMonth() + 1)).toISOString().slice(0, 10);
+      const { start, endExcl: end } = monthBounds(month);
       q = q.gte("date", start).lt("date", end);
     }
     if (category_id) q = q.eq("category_id", category_id);
