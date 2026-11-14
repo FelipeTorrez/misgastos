@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { monthOverlaps, rangeDays, addDays, toDate, fmt, daysInMonth } from "./dateRange.js";
+import { monthOverlaps, rangeDays, addDays, toDate, fmt, daysInMonth, monthBounds } from "./dateRange.js";
 
 describe("#Filtro rango — helpers de fecha (ciclo 20→20)", () => {
   it("monthOverlaps agrupa correctamente un ciclo que cruza 2 meses", () => {
@@ -41,5 +41,17 @@ describe("#Filtro rango — helpers de fecha (ciclo 20→20)", () => {
     expect(fmt(addDays(toDate("2026-08-31"), 1))).toBe("2026-09-01");
     expect(daysInMonth(2026, 2)).toBe(28);
     expect(daysInMonth(2024, 2)).toBe(29);
+  });
+
+  it("monthBounds cubre marzo completo (31 días, sin desfase UTC)", () => {
+    expect(monthBounds("2026-03")).toEqual({ start: "2026-03-01", endExcl: "2026-04-01" });
+  });
+
+  it("monthBounds cubre diciembre y cruza el año", () => {
+    expect(monthBounds("2026-12")).toEqual({ start: "2026-12-01", endExcl: "2027-01-01" });
+  });
+
+  it("monthBounds respeta febrero bisiesto 2028", () => {
+    expect(monthBounds("2028-02")).toEqual({ start: "2028-02-01", endExcl: "2028-03-01" });
   });
 });

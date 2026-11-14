@@ -61,3 +61,11 @@ export function monthOverlaps(from: string, to: string): MonthOverlap[] {
 export function rangeDays(from: string, to: string): number {
   return Math.round((toDate(to).getTime() - toDate(from).getTime()) / 86400000) + 1;
 }
+
+/** Límites [start, endExcl) de un mes "YYYY-MM", todo en UTC. */
+export function monthBounds(month: string): { start: string; endExcl: string } {
+  const [y, m] = month.split("-").map(Number);
+  const start = fmt(toDate(`${month}-01`));
+  const endExcl = fmt(addDays(toDate(start), daysInMonth(y!, m!)));
+  return { start, endExcl };
+}
