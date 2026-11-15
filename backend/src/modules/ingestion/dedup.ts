@@ -1,6 +1,16 @@
 /**
  * Deduplicación §15 — evita que email + notificación + cartola creen 2 transacciones.
  * Criterios: amount, date (YYYY-MM-DD), merchant normalizado, type, ventana tiempo.
+ *
+ * CONVENCIÓN REAL DE `transactions.date` (no es UTC real):
+ * ingestion/routes.ts escribe `${p.date}T${p.time ?? "12:00"}:00Z`, es decir, la hora
+ * de pared de APP_TZ etiquetada con `Z` (p. ej. email "24/08/2026 15:30" →
+ * `2026-08-24T15:30:00Z`). Mobile manda `T12:00:00Z` con la misma semántica
+ * solo-fecha. Por eso la dedup compara `candidate.time` (hora de pared del
+ * correo/notificación) contra `getUTCHours()/getUTCMinutes()` del `date`
+ * guardado (= hora de pared), SIN convertir a zona local vía Intl/APP_TZ.
+ * Si algún día se migra a UTC real hay que migrar datos y todos los
+ * escritores juntos (ingesta + mobile), no solo este archivo.
  */
 
 export type Candidate = {
@@ -33,28 +43,13 @@ function sameDay(a: string | null, b: string): boolean {
   return da === db;
 }
 
-function localParts(iso: string, tz: string): { h: number; m: number } {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: tz,
-    hour12: false,
-    hour: "2-digit",
-    minute: "2-digit",
-  }).formatToParts(new Date(iso));
-  let h = 0, m = 0;
-  for (const p of parts) {
-    if (p.type === "hour") h = Number(p.value) % 24;
-    if (p.type === "minute") m = Number(p.value);
-  }
-  return { h, m };
-}
-
 function timeDiffMinutes(aTime: string | null | undefined, bDateIso: string): number | null {
   if (!aTime) return null;
   const [ah, am] = aTime.split(":").map(Number);
-  const tz = process.env.APP_TZ ?? "America/Santiago";
-  // candidate.time es hora local (reloj de pared del correo/notificación);
-  // comparar contra las partes locales del timestamptz guardado, no UTC.
-  const { h: bh, m: bm } = localParts(bDateIso, tz);
+  // `bDateIso` es hora de pared etiquetada Z (ver header): se lee tal cual en UTC.
+  const d = new Date(bDateIso);
+  const bh = d.getUTCHours();
+  const bm = d.getUTCMinutes();
   return Math.abs(ah * 60 + am - (bh * 60 + bm));
 }
 
