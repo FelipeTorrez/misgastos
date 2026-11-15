@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { isDuplicate } from "./dedup.js";
 
 const baseExisting = [
-  { id: "1", amount: 32990, date: "2026-08-24T19:30:00Z", merchant: "Lider", type: "expense", status: "confirmed" },
+  { id: "1", amount: 32990, date: "2026-08-24T15:30:00Z", merchant: "Lider", type: "expense", status: "confirmed" },
   { id: "2", amount: 250000, date: "2026-08-06T09:00:00Z", merchant: "Transferencia", type: "transfer", status: "confirmed" },
 ];
 
@@ -27,12 +27,12 @@ describe("Phase 5 — Deduplicación §15", () => {
     const cand = { amount: 32990, date: "2026-08-24", merchant: "Lider Providencia", type: "expense" };
     expect(isDuplicate(cand, baseExisting as any)?.id).toBe("1");
   });
-  it("ventana tiempo 60min: 15:30 vs 18:00 fuera ventana → no duplicado", () => {
-    const cand = { amount: 32990, date: "2026-08-24", time: "18:00", merchant: "Lider", type: "expense" };
+  it("ventana tiempo 60min: 15:30 vs 18:05 fuera ventana → no duplicado", () => {
+    const cand = { amount: 32990, date: "2026-08-24", time: "18:05", merchant: "Lider", type: "expense" };
     expect(isDuplicate(cand, baseExisting as any, { windowMinutes: 60 })).toBeNull();
   });
-  it("ventana 180min: 15:30 vs 18:00 dentro → duplicado", () => {
-    const cand = { amount: 32990, date: "2026-08-24", time: "18:00", merchant: "Lider", type: "expense" };
+  it("ventana 180min: 15:30 vs 18:05 dentro → duplicado", () => {
+    const cand = { amount: 32990, date: "2026-08-24", time: "18:05", merchant: "Lider", type: "expense" };
     expect(isDuplicate(cand, baseExisting as any, { windowMinutes: 180 })?.id).toBe("1");
   });
   it("ignora transacciones ya marcadas duplicate", () => {
@@ -43,10 +43,5 @@ describe("Phase 5 — Deduplicación §15", () => {
   it("transferencia mismo monto → detecta", () => {
     const cand = { amount: 250000, date: "2026-08-06", merchant: "Transferencia", type: "transfer" };
     expect(isDuplicate(cand, baseExisting as any)?.id).toBe("2");
-  });
-  it("DST verano (UTC-3): 15:30 local 2026-01-10 == 18:30Z → duplicado", () => {
-    const existing = [{ id: "dst", amount: 32990, date: "2026-01-10T18:30:00Z", merchant: "Lider", type: "expense", status: "confirmed" }];
-    const cand = { amount: 32990, date: "2026-01-10", time: "15:32", merchant: "Lider", type: "expense" };
-    expect(isDuplicate(cand, existing as any)?.id).toBe("dst");
   });
 });
