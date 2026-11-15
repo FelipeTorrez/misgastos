@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import Fastify from "fastify";
 
 const { db } = vi.hoisted(() => {
-  return { db: { transactions: [] as any[] } };
+  return { db: { transactions: [] as any[], error: null as any } };
 });
 
 function makeTable(tables: any, tname: string) {
@@ -38,7 +38,7 @@ function makeTable(tables: any, tname: string) {
       }
       return { data: rows[0] ?? null, error: null };
     },
-    then: (cb: any) => cb({ data: apply(), error: null }),
+    then: (cb: any) => cb(db.error ? { data: null, error: db.error } : { data: apply(), error: null }),
   };
   return b;
 }
@@ -53,6 +53,7 @@ import { transactionRoutes } from "./routes.js";
 
 beforeEach(() => {
   db.transactions.length = 0;
+  db.error = null;
 });
 
 describe("GET /v1/transactions?month — fin de mes", () => {
@@ -69,6 +70,15 @@ describe("GET /v1/transactions?month — fin de mes", () => {
     expect(res.statusCode).toBe(200);
     const list = res.json();
     expect(list.map((t: any) => t.id).sort()).toEqual(["m29", "m30", "m31"]);
+  });
+
+  it("devuelve 503 con code db_unavailable cuando Supabase falla", async () => {
+    db.error = { message: "db down" };
+    const app = Fastify();
+    await app.register(transactionRoutes);
+    const res = await app.inject({ method: "GET", url: "/v1/transactions?month=2026-03" });
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toMatchObject({ error: "db down", code: "db_unavailable" });
   });
 });
 

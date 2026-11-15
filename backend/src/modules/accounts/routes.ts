@@ -14,9 +14,10 @@ const CreateAccount = z.object({
 });
 
 export async function accountRoutes(app: FastifyInstance) {
-  app.get("/v1/accounts", async (req) => {
+  app.get("/v1/accounts", async (req, reply) => {
     const userId = getUserId(req);
-    const { data } = await supabase.from("accounts").select("*").eq("user_id", userId).order("created_at");
+    const { data, error } = await supabase.from("accounts").select("*").eq("user_id", userId).order("created_at");
+    if (error) return reply.status(503).send({ error: error.message, code: "db_unavailable" });
     return data ?? [];
   });
 

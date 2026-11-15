@@ -41,7 +41,8 @@ export async function balanceRoutes(app: FastifyInstance) {
         const { start, endExcl: end } = monthBounds(effMonth);
         q = q.gte("date", start).lt("date", end);
       }
-      const { data } = await q;
+      const { data, error } = await q;
+      if (error) return reply.status(503).send({ error: error.message, code: "db_unavailable" });
       const filtered = ((data ?? []) as any[]).filter(t => t.status !== "duplicate" && t.status !== "ignored");
       rows = filtered.map(t => ({ amount: t.amount, type: t.type, date: t.date }));
       rawForByCat = filtered;
