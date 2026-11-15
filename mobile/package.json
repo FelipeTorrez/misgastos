@@ -10,7 +10,7 @@
     "web": "expo start --web --port 8084 --clear",
     "web:export": "expo export --platform web",
     "serve": "serve dist -l 8084",
-    "test": "jest"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@expo/metro-runtime": "~5.0.4",
@@ -32,5 +32,8 @@
   },
   "overrides": {
     "expo-font": "~13.3.2"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.9"
   }
 }
