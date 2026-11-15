@@ -61,7 +61,8 @@ export async function transactionRoutes(app: FastifyInstance) {
     }
     if (category_id) q = q.eq("category_id", category_id);
     if (account_id) q = q.eq("account_id", account_id);
-    const { data } = await q;
+    const { data, error } = await q;
+    if (error) return reply.status(503).send({ error: error.message, code: "db_unavailable" });
     return data ?? [];
   });
 
