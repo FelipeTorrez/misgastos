@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from "react-native";
 import { C, R, SP } from "../theme/tokens";
 import { Category } from "../lib/categories";
@@ -7,6 +8,8 @@ import { Card, SectionHeader } from "../components/ui/Card";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Progress } from "../components/ui/Progress";
 import { Amount } from "../components/ui/Amount";
+import { DonutChart } from "../components/ui/DonutChart";
+import { buildDonutSegments } from "../lib/donut";
 import { fmtCLP } from "../lib/format";
 
 export function toTitleCase(s: string) {
@@ -20,10 +23,15 @@ export function Categorias({ txs, cats, byCat, onSelectCategory }: {
   onSelectCategory?: (cat: Category) => void;
 }) {
   const total = Object.values(byCat).reduce((a, b) => a + b, 0);
+  const [view, setView] = useState<"barras" | "dona">("barras");
   const withSpent = cats
     .map(c => ({ ...c, spent: byCat[c.id] ?? 0 }))
     .filter(c => c.spent > 0)
     .sort((a, b) => b.spent - a.spent);
+  const donutSegments = buildDonutSegments(
+    withSpent.map(c => ({ key: c.id, label: c.label, value: c.spent, color: catIcon(c.slug).color }))
+  );
+  const byId = new Map(withSpent.map(c => [c.id, c]));
   const recent = txs.slice().sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
 
   return (
@@ -31,8 +39,48 @@ export function Categorias({ txs, cats, byCat, onSelectCategory }: {
       <Card style={s.distCard}>
         <Text style={s.distTitle}>Distribución por Categoría</Text>
         <Text style={s.distSub}>Toca una categoría para filtrar</Text>
+        <View style={s.toggle}>
+          {(["barras", "dona"] as const).map(v => (
+            <TouchableOpacity
+              key={v}
+              onPress={() => setView(v)}
+              activeOpacity={0.7}
+              accessibilityLabel={v === "barras" ? "Barras" : "Dona"}
+              accessibilityRole="button"
+              style={[s.pill, view === v && s.pillActive]}
+            >
+              <Text style={[s.pillText, view === v && s.pillTextActive]}>
+                {v === "barras" ? "Barras" : "Dona"}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
         {withSpent.length === 0 ? (
           <EmptyState icon="view-grid" title="Sin gastos este mes" subtitle="Agrega tu primer movimiento para ver la distribución" />
+        ) : view === "dona" ? (
+          <View style={{ marginTop: 14 }}>
+            <DonutChart
+              segments={donutSegments}
+              centerValue={fmtCLP(total)}
+              centerLabel="Total"
+              onPressSegment={(key) => { const c = byId.get(key); if (c) onSelectCategory?.(c); }}
+            />
+            <View style={{ gap: 8, marginTop: 14 }}>
+              {donutSegments.map(seg => {
+                const c = byId.get(seg.key)!;
+                return (
+                  <TouchableOpacity key={seg.key} onPress={() => onSelectCategory?.(c)} activeOpacity={0.7}>
+                    <View style={s.legendRow}>
+                      <View style={[s.dot, { backgroundColor: seg.color }]} />
+                      <Text style={s.name}>{seg.label}</Text>
+                      <Text style={s.pct}>{seg.pct}%</Text>
+                      <Text style={s.legendAmount}>{fmtCLP(seg.value)}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
         ) : (
           <View style={{ gap: 12, marginTop: 14 }}>
             {withSpent.map(c => (
@@ -90,6 +138,14 @@ const s = StyleSheet.create({
   pct: { color: C.dim, fontSize: 12, fontWeight: "600" },
   amount: { color: C.text, fontSize: 12, marginTop: 2 },
   muted: { color: C.dim, fontSize: 13 },
+  toggle: { flexDirection: "row", gap: 8, marginTop: 12 },
+  pill: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: R.pill, backgroundColor: C.surfaceAlt },
+  pillActive: { backgroundColor: C.primarySoft },
+  pillText: { color: C.dim, fontSize: 13, fontWeight: "600" },
+  pillTextActive: { color: C.text },
+  legendRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  dot: { width: 10, height: 10, borderRadius: 5 },
+  legendAmount: { color: C.text, fontSize: 12, marginLeft: "auto" },
   movCard: { flexDirection: "row", alignItems: "center", padding: 12 } as any,
   movMerchant: { color: C.text, fontWeight: "600", fontSize: 14 },
   movMeta: { color: C.dim, fontSize: 12, marginTop: 2 },
