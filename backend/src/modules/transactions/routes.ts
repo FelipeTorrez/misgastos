@@ -3,9 +3,9 @@ import { z } from "zod";
 import { supabase, getUserId, isMockMode } from "../../lib/supabase.js";
 import { mockStore } from "../../lib/mockStore.js";
 import { monthBounds } from "../../lib/dateRange.js";
-import { TransactionsQuery } from "../../lib/queryDates.js";
+import { TransactionsQuery, DateTimeQuery } from "../../lib/queryDates.js";
 
-const CreateTx = z.object({
+export const CreateTx = z.object({
   account_id: z.string().uuid().nullable().optional(),
   category_id: z.string().uuid().nullable().optional(),
   merchant: z.string().min(1).max(100),
@@ -13,7 +13,7 @@ const CreateTx = z.object({
   currency: z.string().default("CLP"),
   type: z.enum(["expense","income","transfer"]),
   payment_method: z.enum(["debit_card","credit_card","transfer","cash","unknown"]).default("unknown"),
-  date: z.string(),
+  date: DateTimeQuery,
   from_account_id: z.string().uuid().nullable().optional(),
   to_account_id: z.string().uuid().nullable().optional(),
   status: z.enum(["pending_ai","pending_review","confirmed","corrected","ignored","duplicate"]).default("confirmed"),
@@ -27,7 +27,7 @@ function toTitleCase(s: string): string {
   return s.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
 }
 
-const PatchTx = z.object({
+export const PatchTx = z.object({
   merchant: z.string().min(1).max(100).optional(),
   amount: z.number().int().positive().optional(),
   category_id: z.string().uuid().nullable().optional(),
@@ -37,7 +37,7 @@ const PatchTx = z.object({
   counterparty: z.string().max(100).nullable().optional(),
   confidence: z.number().min(0).max(1).optional(),
   account_id: z.string().uuid().nullable().optional(),
-  date: z.string().optional(),
+  date: DateTimeQuery.optional(),
 }).strict();
 
 export async function transactionRoutes(app: FastifyInstance) {
