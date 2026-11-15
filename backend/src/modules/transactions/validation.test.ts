@@ -1,22 +1,7 @@
-import { describe, it, expect } from "vitest";
-import { z } from "zod";
-
-// Replica del schema de routes.ts para test unit puro (sin Fastify)
-const CreateTx = z.object({
-  account_id: z.string().uuid().nullable().optional(),
-  merchant: z.string().min(1).max(100),
-  amount: z.number().int().positive(),
-  currency: z.string().default("CLP"),
-  type: z.enum(["expense","income","transfer"]),
-  payment_method: z.enum(["debit_card","credit_card","transfer","cash","unknown"]).default("unknown"),
-  date: z.string(),
-  from_account_id: z.string().uuid().nullable().optional(),
-  to_account_id: z.string().uuid().nullable().optional(),
-  status: z.enum(["pending_ai","pending_review","confirmed","corrected","ignored","duplicate"]).default("confirmed"),
-}).refine(v => {
-  if (v.type === "transfer") return !!v.from_account_id && !!v.to_account_id && v.from_account_id !== v.to_account_id;
-  return true;
-}, { message: "transfer requiere from_account_id y to_account_id distintos" });
+import { describe, it, expect, beforeEach } from "vitest";
+import Fastify from "fastify";
+import { CreateTx, PatchTx, transactionRoutes } from "./routes.js";
+import { mockStore } from "../../lib/mockStore.js";
 
 const UUID1 = "11111111-1111-1111-8111-111111111111";
 const UUID2 = "22222222-2222-2222-8222-222222222222";
@@ -53,5 +38,68 @@ describe("#1 Unit — transacciones & transfer 1-fila (ADR-002)", () => {
   it("amount 0 falla", () => {
     const r = CreateTx.safeParse({ merchant: "Lider", amount: 0, type: "expense", date: "2026-08-24" });
     expect(r.success).toBe(false);
+  });
+});
+
+describe("date ISO en CreateTx/PatchTx → 400 si inválida", () => {
+  it("'24/08/2026' rechazada", () => {
+    const r = CreateTx.safeParse({ merchant: "Lider", amount: 1000, type: "expense", date: "24/08/2026" });
+    expect(r.success).toBe(false);
+  });
+  it("'2026-02-30' rechazada (no es fecha calendario)", () => {
+    const r = CreateTx.safeParse({ merchant: "Lider", amount: 1000, type: "expense", date: "2026-02-30" });
+    expect(r.success).toBe(false);
+  });
+  it("'2026-08-24' aceptada", () => {
+    const r = CreateTx.safeParse({ merchant: "Lider", amount: 1000, type: "expense", date: "2026-08-24" });
+    expect(r.success).toBe(true);
+  });
+  it("'2026-08-24T12:00:00Z' aceptada", () => {
+    const r = CreateTx.safeParse({ merchant: "Lider", amount: 1000, type: "expense", date: "2026-08-24T12:00:00Z" });
+    expect(r.success).toBe(true);
+  });
+  it("'2026-08-24T12:00:00-04:00' aceptada", () => {
+    const r = CreateTx.safeParse({ merchant: "Lider", amount: 1000, type: "expense", date: "2026-08-24T12:00:00-04:00" });
+    expect(r.success).toBe(true);
+  });
+  it("PatchTx rechaza date inválida", () => {
+    expect(PatchTx.safeParse({ date: "24/08/2026" }).success).toBe(false);
+    expect(PatchTx.safeParse({ date: "2026-08-24" }).success).toBe(true);
+  });
+});
+
+describe("POST /v1/transactions con date inválida → 400 sin guardar", () => {
+  beforeEach(() => {
+    mockStore.reset();
+  });
+
+  it("app.inject POST con date inválida → 400 y mockStore sin filas", async () => {
+    const app = Fastify();
+    await app.register(transactionRoutes);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/transactions",
+      payload: { merchant: "Lider", amount: 1000, type: "expense", date: "24/08/2026" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(mockStore.transactions.length).toBe(0);
+  });
+
+  it("PATCH con date inválida → 400 y conserva fecha", async () => {
+    const tx = mockStore.insertTransaction("00000000-0000-0000-0000-000000000000", {
+      merchant: "Lider",
+      amount: 1000,
+      type: "expense",
+      date: "2026-08-24",
+    });
+    const app = Fastify();
+    await app.register(transactionRoutes);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/transactions/${tx.id}`,
+      payload: { date: "2026-02-30" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(mockStore.transactions[0].date).toBe("2026-08-24");
   });
 });
