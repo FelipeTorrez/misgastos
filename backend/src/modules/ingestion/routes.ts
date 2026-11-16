@@ -183,7 +183,8 @@ async function processIngestion(data: any, userId: string) {
     if (ai.counterparty) finalCounterparty = ai.counterparty;
     aiConfidence = ai.confidence ?? p.confidence;
     aiNeedsReview = ai.needs_review ?? (p.confidence < 0.6);
-    classificationSource = "ai";
+    classificationSource = (ai as any)?.provider_fallback ? "fallback" : "ai";
+    if (classificationSource === "fallback") aiNeedsReview = true;
   }
   // Fallback dirección si aún no seteada y hay monto (parser sin IA o regla sin AI)
   if (!finalDirection && p.amount !== null) {
@@ -237,11 +238,13 @@ async function processIngestion(data: any, userId: string) {
     let status: string, duplicateOf: string | null = null;
     if (dedupFound) { status = "duplicate"; duplicateOf = dedupFound.id; }
     else if (classificationSource === "rule") status = "pending_ai";
+    else if (classificationSource === "fallback") status = "pending_review";
     else status = aiNeedsReview ? "pending_review" : "pending_ai";
 
     // Resolver payment_method desde AI o fallback
     const paymentMethod = (ai?.payment_method as any) ?? (p.last4 ? "credit_card" as const : "unknown" as const);
     const direction = (ai?.direction as any) ?? finalDirection ?? (type === "income" ? "in" : type === "transfer" ? "internal" : "out");
+    const fallbackReason = (ai as any)?.provider_fallback as string | undefined;
     const payload: any = {
       user_id: userId, raw_event_id: rawEventId, merchant: finalMerchant,
       amount: p.amount, currency: p.currency ?? "CLP", type,
@@ -252,6 +255,7 @@ async function processIngestion(data: any, userId: string) {
       status, confidence: aiConfidence,
       is_recurring_candidate: ai?.is_recurring_candidate ?? false, duplicate_of: duplicateOf,
       source: classificationSource,
+      ...(fallbackReason ? { metadata: { review_reason: `ai_fallback:${fallbackReason}` } } : {}),
     };
 
     if (isMockMode) {

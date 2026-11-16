@@ -19,7 +19,8 @@ export const AgentOutputSchema = z.object({
   is_transfer_candidate: z.boolean(),
   confidence: z.number().min(0).max(1),
   needs_review: z.boolean(),
-  reason: z.string().nullable()
+  reason: z.string().nullable(),
+  provider_fallback: z.string().optional()
 });
 
 export type AgentOutput = z.infer<typeof AgentOutputSchema>;

@@ -30,7 +30,10 @@ function query(table:string){
 vi.mock("../src/lib/supabase.js", ()=>({ supabase:{from:(t:string)=>query(t)}, getUserId:()=>"user-test", isMockMode: false }));
 import app from "../src/index.js";
 
-beforeEach(()=> reset());
+// Sin API key el clasificador usa el fallback visible (determinístico, sin red)
+delete (process.env as any).GROQ_API_KEY;
+
+beforeEach(()=>{ reset(); delete (process.env as any).GROQ_API_KEY; });
 
 describe("Phase 3 — Ingestion Email §11.1 → RawEvent §12 → Parser §14", ()=>{
   it("POST /v1/ingestion/email crea RawEvent + Transaction (Lider §37)", async ()=>{
@@ -46,7 +49,24 @@ describe("Phase 3 — Ingestion Email §11.1 → RawEvent §12 → Parser §14",
     expect(j.parsed.merchant).toBe("Lider");
     expect(j.transaction).toBeDefined();
     expect(j.transaction.amount).toBe(32990);
-    expect(j.transaction.status).toBe("pending_ai");
+    // Sin GROQ_API_KEY el clasificador usa fallback visible -> pending_review/fallback
+    expect(j.transaction.status).toBe("pending_review");
+    expect(j.transaction.source).toBe("fallback");
+    expect(j.ai.provider_fallback).toBeDefined();
+  });
+
+  it("fallback visible: tx pending_review + source fallback + metadata review_reason", async ()=>{
+    const res = await app.inject({ method:"POST", url:"/v1/ingestion/email", payload:{
+      sender:"santander@notificaciones.cl", subject:"Compra realizada",
+      raw_content:"Compra por $15.000 en Comercio Desconocido XYZ con tarjeta terminada en 1234 - 24/08/2026 15:30 - Santander",
+      external_id:"gmail-fallback-1"
+    }});
+    expect(res.statusCode).toBe(201);
+    const j = JSON.parse(res.body);
+    expect(j.transaction.status).toBe("pending_review");
+    expect(j.transaction.source).toBe("fallback");
+    expect(j.transaction.metadata.review_reason).toMatch(/^ai_fallback:/);
+    expect(j.classification_source).toBe("fallback");
   });
 
   it("idempotencia por external_id (duplicate email ignored)", async ()=>{
