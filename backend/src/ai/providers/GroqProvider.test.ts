@@ -84,6 +84,57 @@ describe("Phase 4 — AI Agent #1 (Groq) mock", () => {
     expect((out as any).provider_fallback).toMatch(/429/);
     expect(AgentOutputSchema.safeParse(out).success).toBe(true);
   });
+  it("429 TPD => sin reintento y fallback groq_429_tpd", async () => {
+    let calls = 0;
+    (globalThis as any).fetch = async () => {
+      calls++;
+      return {
+        ok: false,
+        status: 429,
+        headers: { get: () => "787" },
+        text: async () => "Rate limit reached for model. tokens per day (TPD): Limit 200000, Used 198794, try again in 13m6.24s",
+      } as any;
+    };
+    const p = new GroqProvider();
+    (p as any).apiKey = "test-key";
+    const out = await p.classify(baseInput as any);
+    expect(calls).toBe(1);
+    expect((out as any).provider_fallback).toMatch(/tpd/i);
+    expect((out as any).provider_fallback).toMatch(/^groq_429_tpd:/);
+    expect(AgentOutputSchema.safeParse(out).success).toBe(true);
+  });
+  it("429 TPM => reintenta una vez", async () => {
+    let calls = 0;
+    (globalThis as any).fetch = async () => {
+      calls++;
+      if (calls === 1) {
+        return {
+          ok: false,
+          status: 429,
+          headers: { get: () => "1" },
+          text: async () => "Rate limit reached tokens per minute (TPM): Limit 1000, try again in 1s",
+        } as any;
+      }
+      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: validLLMContent() } }] }) } as any;
+    };
+    const p = new GroqProvider();
+    (p as any).apiKey = "test-key";
+    await p.classify(baseInput as any);
+    expect(calls).toBe(2);
+  });
+  it("429 sin body reconocible => sin reintento y fallback groq_429", async () => {
+    let calls = 0;
+    (globalThis as any).fetch = async () => {
+      calls++;
+      return { ok: false, status: 429, headers: { get: () => null }, text: async () => "Service unavailable" } as any;
+    };
+    const p = new GroqProvider();
+    (p as any).apiKey = "test-key";
+    const out = await p.classify(baseInput as any);
+    expect(calls).toBe(1);
+    expect((out as any).provider_fallback).toMatch(/groq_429/);
+    expect(AgentOutputSchema.safeParse(out).success).toBe(true);
+  });
   it("tolerante: omite date/account_hint/installment => parsea sin fallback y conserva category", async () => {
     (globalThis as any).fetch = async () => ({
       ok: true, status: 200,

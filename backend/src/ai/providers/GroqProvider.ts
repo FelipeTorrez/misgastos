@@ -8,6 +8,16 @@ import { FINAN_SYSTEM_PROMPT, inferDirection } from "../prompts/agente-financier
 // Si el modelo fue decomisionado, la API responde 400 y el provider cae a mock
 // con provider_fallback visible (ver manejo 'decommissioned' abajo).
 export const DEFAULT_GROQ_MODEL = "qwen/qwen3-32b";
+
+function formatRetryAfter(raw: unknown): string {
+  if (raw == null) return "unknown";
+  const secs = parseFloat(String(raw));
+  if (Number.isNaN(secs) || secs < 0) return String(raw).slice(0, 20) || "unknown";
+  const total = Math.floor(secs);
+  if (total >= 60) return `${Math.floor(total / 60)}m${total % 60}s`;
+  return `${total}s`;
+}
+
 export class GroqProvider {
   private apiKey = process.env.GROQ_API_KEY ?? "";
   private model = process.env.GROQ_MODEL ?? DEFAULT_GROQ_MODEL;
@@ -51,14 +61,36 @@ export class GroqProvider {
       let res = await doFetch();
       if (res.status === 429) {
         const raw = (res.headers as any)?.get?.("retry-after");
-        const maxDelay = process.env.NODE_ENV === "test" ? 20 : 5000;
-        let delayMs = Math.min(1000, maxDelay);
-        if (raw != null) {
-          const secs = parseFloat(String(raw));
-          if (!Number.isNaN(secs)) delayMs = Math.min(Math.max(secs * 1000, 0), maxDelay);
+        const bodyText = await res.text().then((t) => t.slice(0, 1000), () => "");
+        const low = bodyText.toLowerCase();
+        const isTpd = low.includes("tokens per day") || low.includes("tpd");
+        const isTpm =
+          low.includes("tokens per minute") || low.includes("tokens per min") || low.includes("tpm") || low.includes("otpm");
+        const suffix = formatRetryAfter(raw);
+        if (isTpd) {
+          throw new Error(`groq_429_tpd:${suffix} ${bodyText.slice(0, 200)}`.trim());
         }
-        await new Promise((r) => setTimeout(r, delayMs));
+        if (!isTpm) {
+          throw new Error(`groq_429:${suffix} ${bodyText.slice(0, 200)}`.trim());
+        }
+        // Límite por minuto: un solo reintento respetando retry-after con tope de 10s
+        const secs = parseFloat(String(raw));
+        const delayMs = Number.isNaN(secs) ? 1000 : Math.min(Math.max(secs * 1000, 0), 10_000);
+        const isTest = !!process.env.VITEST || process.env.NODE_ENV === "test";
+        if (!isTest && delayMs > 0) {
+          await new Promise((r) => setTimeout(r, delayMs));
+        }
         res = await doFetch();
+        if (res.status === 429) {
+          const raw2 = (res.headers as any)?.get?.("retry-after") ?? raw;
+          const body2 = await res.text().then((t) => t.slice(0, 1000), () => "");
+          const low2 = body2.toLowerCase();
+          const suffix2 = formatRetryAfter(raw2);
+          if (low2.includes("tokens per day") || low2.includes("tpd")) {
+            throw new Error(`groq_429_tpd:${suffix2} ${body2.slice(0, 200)}`.trim());
+          }
+          throw new Error(`groq_429:${suffix2} ${body2.slice(0, 200)}`.trim());
+        }
       }
       if (!res.ok) {
         const rawBody = await res.text().then((t) => t.slice(0, 300));
@@ -75,8 +107,11 @@ export class GroqProvider {
       if (!validated.success) throw new Error("zod: " + JSON.stringify(validated.error.flatten()));
       return validated.data;
     } catch (e: any) {
-      // Fallback mock visible con razón
+      // Fallback mock visible con razón (preserva detalle groq_429_tpd / groq_429)
       const msg = e?.message ?? "groq_error";
+      if (msg.includes("groq_429_tpd") || msg.includes("groq_429:")) {
+        return this.mock(input, msg.slice(0, 120));
+      }
       const reason = msg.includes("429") ? "429" : msg.slice(0, 120) || "groq_error";
       return this.mock(input, msg.includes("429") ? "429" : `groq_error:${reason}`);
     }
