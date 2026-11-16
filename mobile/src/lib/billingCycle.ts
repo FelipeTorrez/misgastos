@@ -81,6 +81,15 @@ export function rangeLabel(range: DateRange): string {
   return `${fmtShort(from)} ${fromY} — ${fmtShort(to)} ${toY}`;
 }
 
+/** Días inclusivos de un rango [from, to] ("YYYY-MM-DD"). */
+export function cycleDays(from: string, to: string): number {
+  const a = parse(from);
+  const b = parse(to);
+  const t1 = Date.UTC(a.y, a.m - 1, a.d);
+  const t2 = Date.UTC(b.y, b.m - 1, b.d);
+  return Math.round((t2 - t1) / 86400000) + 1;
+}
+
 /** Meses con su mes-número tocados por un rango (para UI). */
 export function rangeMonths(range: DateRange): string[] {
   const out: string[] = [];

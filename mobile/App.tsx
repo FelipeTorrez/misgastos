@@ -163,7 +163,7 @@ export default function App() {
       />
     );
   } else {
-    content = <Presupuesto budgets={budgets} cats={cats} month={month} onRefresh={reload} rangeActive={rangeActive} />;
+    content = <Presupuesto budgets={budgets} cats={cats} month={month} onRefresh={reload} rangeActive={rangeActive} range={period.type === "range" ? { from: period.from, to: period.to } : null} onGoMonth={() => setPeriod({ type: "month", month: currentMonth() })} />;
   }
 
   return (

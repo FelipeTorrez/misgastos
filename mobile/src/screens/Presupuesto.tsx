@@ -10,13 +10,16 @@ import { SwipeRow } from "../components/ui/SwipeRow";
 import { MIcon } from "../components/ui/MIcon";
 import { API_URL } from "../lib/supabase";
 import { fmtCLP } from "../lib/format";
+import { cycleDays, rangeLabel } from "../lib/billingCycle";
 
-export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive }: {
+export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive, range, onGoMonth }: {
   budgets: Budget[];
   cats: Category[];
   month: string;
   onRefresh?: () => void;
   rangeActive?: boolean;
+  range?: { from: string; to: string } | null;
+  onGoMonth?: () => void;
 }) {
   const [configOpen, setConfigOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -25,6 +28,8 @@ export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive }: {
 
   const notify = (m: string) => { setToast(m); setTimeout(() => setToast(null), 2800); };
   const expenseCats = cats.filter(c => c.type === "expense");
+  const cycleN = rangeActive && range ? cycleDays(range.from, range.to) : 0;
+  const cycleSubtitle = cycleN > 0 ? `Ciclo ${rangeLabel(range!)} · ${cycleN} días` : "Ciclo — límites prorrateados";
   const rows = useMemo(() => {
     return budgets
       .filter((b): b is Budget => Boolean(b.category_id))
@@ -103,7 +108,7 @@ export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive }: {
       <View style={s.headRow}>
         <View style={{ flex: 1 }}>
           <Text style={s.title}>Metas & Presupuestos</Text>
-          <Text style={s.subtitle}>{rangeActive ? "Ciclo — límites prorrateados" : "Límites mensuales por categoría"}</Text>
+          <Text style={s.subtitle}>{rangeActive ? cycleSubtitle : "Límites mensuales por categoría"}</Text>
         </View>
         {!rangeActive && (
           <TouchableOpacity style={s.configBtn} onPress={openConfig} activeOpacity={0.8}>
@@ -113,14 +118,23 @@ export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive }: {
         )}
       </View>
 
-      <Text style={s.hint}>{rangeActive ? "Vista de ciclo (solo lectura) — usa el selector «Mes» arriba para editar" : "Desliza para borrar · Toca para editar"}</Text>
+      <Text style={s.hint}>{rangeActive ? "Solo lectura — los límites se cargan en la vista Mes" : "Desliza para borrar · Toca para editar"}</Text>
 
       {rows.length === 0 ? (
         <View style={s.empty}>
           <View style={s.emptyIcon}><MIcon name="target" size={28} color={C.primary} /></View>
           <Text style={s.emptyTitle}>{rangeActive ? "Sin límites en este ciclo" : "Aún no has definido límites"}</Text>
-          <Text style={s.emptySub}>{rangeActive ? "Define límites mensuales en la vista de mes." : "Configura tus categorías o copia las del mes anterior."}</Text>
-          {!rangeActive && (
+          <Text style={s.emptySub}>{rangeActive ? "Los límites se cargan en la vista Mes y aquí se ven prorrateados." : "Configura tus categorías o copia las del mes anterior."}</Text>
+          {rangeActive ? (
+            onGoMonth ? (
+              <View style={s.emptyBtns}>
+                <TouchableOpacity style={s.ghostBtn} onPress={onGoMonth} activeOpacity={0.85}>
+                  <MIcon name="calendar-month" size={14} color={C.primary} />
+                  <Text style={s.ghostBtnText}>Ir a Mes</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null
+          ) : (
             <View style={s.emptyBtns}>
               <TouchableOpacity style={s.primaryBtn} onPress={openConfig} activeOpacity={0.85}>
                 <MIcon name="cog" size={14} color="#04121F" />
@@ -147,7 +161,7 @@ export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive }: {
                     <Text style={s.name}>{name}</Text>
                     <Text style={s.spent}>{fmtCLP(b.spent)}</Text>
                   </View>
-                  <Text style={s.limit}>de {fmtCLP(b.amount)}</Text>
+                  <Text style={s.limit}>de {fmtCLP(b.amount)}{cycleN > 0 ? ` en ${cycleN} días (≈${fmtCLP(Math.round(b.amount / cycleN))}/día)` : ""}</Text>
                   <View style={{ marginTop: 8 }}>
                     <Progress pct={b.pct ?? 0} height={7} />
                   </View>
