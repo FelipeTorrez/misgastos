@@ -10,6 +10,7 @@ import { Progress } from "../components/ui/Progress";
 import { Amount } from "../components/ui/Amount";
 import { DonutChart } from "../components/ui/DonutChart";
 import { buildDonutSegments } from "../lib/donut";
+import { UNCATEGORIZED_KEY, withUncategorized } from "../lib/distribution";
 import { fmtCLP } from "../lib/format";
 
 export function toTitleCase(s: string) {
@@ -22,15 +23,20 @@ export function Categorias({ txs, cats, byCat, onSelectCategory }: {
   byCat: Record<string, number>;
   onSelectCategory?: (cat: Category) => void;
 }) {
-  const total = Object.values(byCat).reduce((a, b) => a + b, 0);
+  const { byCat: fullByCat, uncategorized } = withUncategorized(byCat, txs);
+  const total = Object.values(fullByCat).reduce((a, b) => a + b, 0);
   const [view, setView] = useState<"barras" | "dona">("barras");
   const withSpent = cats
-    .map(c => ({ ...c, spent: byCat[c.id] ?? 0 }))
+    .map(c => ({ ...c, spent: fullByCat[c.id] ?? 0 }))
     .filter(c => c.spent > 0)
     .sort((a, b) => b.spent - a.spent);
-  const donutSegments = buildDonutSegments(
-    withSpent.map(c => ({ key: c.id, label: c.label, value: c.spent, color: catIcon(c.slug).color }))
-  );
+  const donutItems = [
+    ...withSpent.map(c => ({ key: c.id, label: c.label, value: c.spent, color: catIcon(c.slug).color })),
+    ...(uncategorized > 0
+      ? [{ key: UNCATEGORIZED_KEY, label: "Sin categoría", value: uncategorized, color: C.dim }]
+      : []),
+  ];
+  const donutSegments = buildDonutSegments(donutItems);
   const byId = new Map(withSpent.map(c => [c.id, c]));
   const recent = txs.slice().sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
 
@@ -55,7 +61,7 @@ export function Categorias({ txs, cats, byCat, onSelectCategory }: {
             </TouchableOpacity>
           ))}
         </View>
-        {withSpent.length === 0 ? (
+        {donutSegments.length === 0 ? (
           <EmptyState icon="view-grid" title="Sin gastos este mes" subtitle="Agrega tu primer movimiento para ver la distribución" />
         ) : view === "dona" ? (
           <View style={{ marginTop: 14 }}>
@@ -63,10 +69,20 @@ export function Categorias({ txs, cats, byCat, onSelectCategory }: {
               segments={donutSegments}
               centerValue={fmtCLP(total)}
               centerLabel="Total"
-              onPressSegment={(key) => { const c = byId.get(key); if (c) onSelectCategory?.(c); }}
+              onPressSegment={(key) => { if (key === UNCATEGORIZED_KEY) return; const c = byId.get(key); if (c) onSelectCategory?.(c); }}
             />
             <View style={{ gap: 8, marginTop: 14 }}>
               {donutSegments.map(seg => {
+                if (seg.key === UNCATEGORIZED_KEY) {
+                  return (
+                    <View key={seg.key} style={s.legendRow}>
+                      <View style={[s.dot, { backgroundColor: seg.color }]} />
+                      <Text style={s.name}>{seg.label}</Text>
+                      <Text style={s.pct}>{seg.pct}%</Text>
+                      <Text style={s.legendAmount}>{fmtCLP(seg.value)}</Text>
+                    </View>
+                  );
+                }
                 const c = byId.get(seg.key)!;
                 return (
                   <TouchableOpacity key={seg.key} onPress={() => onSelectCategory?.(c)} activeOpacity={0.7}>
@@ -100,6 +116,21 @@ export function Categorias({ txs, cats, byCat, onSelectCategory }: {
                 </View>
               </TouchableOpacity>
             ))}
+            {uncategorized > 0 && (
+              <View style={s.row}>
+                <CategoryCircle slug={undefined} size={34} />
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <View style={s.rowHead}>
+                    <Text style={s.name}>Sin categoría</Text>
+                    <Text style={s.pct}>{Math.round((uncategorized / total) * 100)}%</Text>
+                  </View>
+                  <Text style={s.amount}>{fmtCLP(uncategorized)}</Text>
+                  <View style={{ marginTop: 6 }}>
+                    <Progress pct={total ? (uncategorized / total) * 100 : 0} height={6} color={C.dim} />
+                  </View>
+                </View>
+              </View>
+            )}
           </View>
         )}
       </Card>
