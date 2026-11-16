@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { monthOverlaps, rangeDays, addDays, toDate, fmt, daysInMonth, monthBounds } from "./dateRange.js";
+import { monthOverlaps, rangeDays, addDays, toDate, fmt, daysInMonth, monthBounds, currentMonthLocal } from "./dateRange.js";
 
 describe("#Filtro rango — helpers de fecha (ciclo 20→20)", () => {
   it("monthOverlaps agrupa correctamente un ciclo que cruza 2 meses", () => {
@@ -53,5 +53,15 @@ describe("#Filtro rango — helpers de fecha (ciclo 20→20)", () => {
 
   it("monthBounds respeta febrero bisiesto 2028", () => {
     expect(monthBounds("2028-02")).toEqual({ start: "2028-02-01", endExcl: "2028-03-01" });
+  });
+
+  it("currentMonthLocal fija America/Santiago aunque el proceso corra en UTC", () => {
+    // 2026-12-01T02:30Z = 30-nov 23:30 en Santiago → sigue siendo noviembre.
+    expect(currentMonthLocal(new Date("2026-12-01T02:30:00Z"))).toBe("2026-11");
+  });
+
+  it("currentMonthLocal cambia a diciembre pasada la medianoche en Santiago", () => {
+    // 2026-12-01T04:00Z = 01-dic 01:00 en Santiago → ya es diciembre.
+    expect(currentMonthLocal(new Date("2026-12-01T04:00:00Z"))).toBe("2026-12");
   });
 });
