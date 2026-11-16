@@ -4,7 +4,7 @@ import { supabase, getUserId, isMockMode } from "../../lib/supabase.js";
 import { parseEmail, normalizeForAI } from "./parser.js";
 import { isDuplicate } from "./dedup.js";
 import { mockStore } from "../../lib/mockStore.js";
-import { normalizeMerchant, findBestRuleMatch } from "../../lib/merchantNorm.js";
+import { normalizeMerchant, findBestRuleMatch, isPaymentProcessor } from "../../lib/merchantNorm.js";
 import { get as classifyCacheGet, set as classifyCacheSet } from "../../lib/classifyCache.js";
 import { allowlistHit } from "./allowlist.js";
 import { inferDirection } from "../../ai/prompts/agente-financiero.js";
@@ -268,6 +268,19 @@ async function processIngestion(data: any, userId: string) {
     }
   }
 
+  // Cola de revisión: procesadores de pago. El banco trae al procesador
+  // (merpago, payu...), no al comercio real: ninguna IA puede acertar, así
+  // que se descarta la categoría inventada y va a pending_review con
+  // metadata.review_reason='payment_processor'. Una regla de usuario sí manda
+  // (conocimiento explícito, no invento).
+  const processorHit =
+    classificationSource !== "rule" &&
+    (isPaymentProcessor(p.merchant) || isPaymentProcessor(ai?.merchant) || isPaymentProcessor(finalMerchant));
+  if (processorHit) {
+    finalCategorySlugOrId = null;
+    finalCategoryId = null;
+  }
+
   // Dedup §15 — solo si hay transacción real y monto
   let dedupFound: any = null;
   if (p.amount !== null) {
@@ -300,6 +313,7 @@ async function processIngestion(data: any, userId: string) {
     let status: string, duplicateOf: string | null = null;
     if (dedupFound) { status = "duplicate"; duplicateOf = dedupFound.id; }
     else if (classificationSource === "rule") status = "pending_ai";
+    else if (processorHit) status = "pending_review";
     else if (classificationSource === "fallback") status = "pending_review";
     else status = aiNeedsReview ? "pending_review" : "pending_ai";
 
@@ -307,6 +321,12 @@ async function processIngestion(data: any, userId: string) {
     const paymentMethod = (ai?.payment_method as any) ?? (p.last4 ? "credit_card" as const : "unknown" as const);
     const direction = (ai?.direction as any) ?? finalDirection ?? (type === "income" ? "in" : type === "transfer" ? "internal" : "out");
     const fallbackReason = (ai as any)?.provider_fallback as string | undefined;
+    const metadata: any = {};
+    if (fallbackReason) metadata.review_reason = `ai_fallback:${fallbackReason}`;
+    if (processorHit) {
+      if (metadata.review_reason) metadata.ai_fallback = fallbackReason;
+      metadata.review_reason = "payment_processor";
+    }
     const payload: any = {
       user_id: userId, raw_event_id: rawEventId, merchant: finalMerchant,
       amount: p.amount, currency: p.currency ?? "CLP", type,
@@ -317,7 +337,7 @@ async function processIngestion(data: any, userId: string) {
       status, confidence: aiConfidence,
       is_recurring_candidate: ai?.is_recurring_candidate ?? false, duplicate_of: duplicateOf,
       source: classificationSource,
-      ...(fallbackReason ? { metadata: { review_reason: `ai_fallback:${fallbackReason}` } } : {}),
+      ...(Object.keys(metadata).length ? { metadata } : {}),
     };
 
     if (isMockMode) {

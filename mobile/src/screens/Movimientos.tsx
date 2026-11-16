@@ -79,6 +79,11 @@ export function Movimientos({ txs, cats, month, filterCategory, onClearFilter, o
   });
   const pendingCount = local.filter(tx => tx.status === "pending_review" || tx.status === "pending_ai").length;
   const isPending = (tx: any) => tx.status === "pending_review" || tx.status === "pending_ai";
+  const reviewReason = (tx: any): string | null => tx.review_reason ?? tx.metadata?.review_reason ?? null;
+  const reviewLabel = (r: string | null) =>
+    r === "payment_processor"
+      ? "Procesador de pago: el banco no muestra el comercio real — elige la categoría."
+      : r ? `Motivo: ${r}` : null;
 
   return (
     <View style={{ flex: 1 }}>
@@ -129,6 +134,9 @@ export function Movimientos({ txs, cats, month, filterCategory, onClearFilter, o
                   </View>
                 </View>
                 <Text style={s.meta} numberOfLines={1} ellipsizeMode="tail">{(item.counterparty ? `Recibido de ${item.counterparty}` : (cats.find(c => c.id === item.category_id)?.label ?? (item.type === "income" ? "Ingreso" : item.type === "transfer" ? "Transferencia" : "Sin categoría")))} · {fmtDate(item.date)}</Text>
+                {isPending(item) && reviewLabel(reviewReason(item)) && (
+                  <Text style={s.reviewReason} numberOfLines={2} ellipsizeMode="tail">{reviewLabel(reviewReason(item))}</Text>
+                )}
               </View>
               {(() => {
                 const sign = item.type === "income" ? "+" : item.type === "transfer" ? "±" : "-";
@@ -215,6 +223,7 @@ const s = StyleSheet.create({
   rowHeader: { flexDirection: "row", alignItems: "center", gap: 8, minWidth: 0 },
   merchant: { color: C.text, fontWeight: "600", flex: 1, minWidth: 0 },
   meta: { color: C.dim, fontSize: 12 },
+  reviewReason: { color: "#f59e0b", fontSize: 11, marginTop: 2 },
   amount: { fontWeight: "800", flexShrink: 0 },
   confirmBtn: { backgroundColor: "#10b981", width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
   confirmBtnText: { color: "#fff", fontSize: 14, fontWeight: "700" },

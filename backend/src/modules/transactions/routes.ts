@@ -43,13 +43,18 @@ export const PatchTx = z.object({
 }).strict();
 
 export async function transactionRoutes(app: FastifyInstance) {
+  // review_reason vive en metadata.review_reason (cola de revisión: procesadores
+  // de pago, fallback IA). Se expone top-level para que la app lo muestre.
+  const withReviewReason = (rows: any[]) =>
+    rows.map((t: any) => ({ ...t, review_reason: t?.metadata?.review_reason ?? null }));
+
   app.get("/v1/transactions", async (req: any, reply: any) => {
     const parsed = TransactionsQuery.safeParse(req.query ?? {});
     if (!parsed.success) return reply.status(400).send(parsed.error.flatten());
     const userId = getUserId(req);
     const { month, category_id, account_id, from, to } = parsed.data;
     const limit = parsed.data.limit ?? 100;
-    if (isMockMode) return mockStore.listTransactions(userId, { month, category_id, account_id, from, to, limit });
+    if (isMockMode) return withReviewReason(mockStore.listTransactions(userId, { month, category_id, account_id, from, to, limit }));
     let q = supabase.from("transactions").select("*").eq("user_id", userId).order("date", { ascending: false }).limit(limit);
     if (from || to) {
       if (from) q = q.gte("date", from);
@@ -65,7 +70,7 @@ export async function transactionRoutes(app: FastifyInstance) {
     if (account_id) q = q.eq("account_id", account_id);
     const { data, error } = await q;
     if (error) return reply.status(503).send({ error: error.message, code: "db_unavailable" });
-    return data ?? [];
+    return withReviewReason(data ?? []);
   });
 
   app.post("/v1/transactions", async (req, reply) => {
