@@ -34,8 +34,10 @@ function formatConfidence(confidence: number | null | undefined): string | null 
 }
 
 /** Etiqueta de procedencia: "IA 95%", "Regla", "Respaldo sin IA", ... */
+/** Una regla siempre es 100%: el porcentaje no aporta, se omite. */
 export function provenanceLabel(tx: ClassifiedTx): string {
   const base = sourceLabel(tx?.source);
+  if (tx?.source === "rule") return base;
   const pct = formatConfidence(tx?.confidence);
   return pct ? `${base} ${pct}` : base;
 }

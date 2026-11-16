@@ -14,6 +14,10 @@ describe("provenanceLabel", () => {
     expect(provenanceLabel({ source: "rule" })).toBe("Regla");
   });
 
+  it("rule con confidence 1 → 'Regla' sin porcentaje", () => {
+    expect(provenanceLabel({ source: "rule", confidence: 1 })).toBe("Regla");
+  });
+
   it("confidence null no agrega porcentaje", () => {
     expect(provenanceLabel({ source: "ai", confidence: null })).toBe("IA");
   });
