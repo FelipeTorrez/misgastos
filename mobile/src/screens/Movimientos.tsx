@@ -167,12 +167,12 @@ export function Movimientos({ txs, cats, month, filterCategory, onClearFilter, o
               <View style={s.center}>
                 <View style={s.rowHeader}>
                   <Text style={s.merchant} numberOfLines={1} ellipsizeMode="tail">{toTitleCase(item.merchant)}</Text>
-                  <View style={s.badges}>
-                    <StatusBadge status={item.status} />
-                    <ClassificationChip tx={item} />
-                  </View>
                 </View>
-                <Text style={s.meta} numberOfLines={1} ellipsizeMode="tail">{(item.counterparty ? `Recibido de ${item.counterparty}` : (cats.find(c => c.id === item.category_id)?.label ?? (item.type === "income" ? "Ingreso" : item.type === "transfer" ? "Transferencia" : "Sin categoría")))} · {fmtDate(item.date)}</Text>
+                <View style={s.metaRow}>
+                  {item.status !== "confirmed" && <StatusBadge status={item.status} />}
+                  <ClassificationChip tx={item} />
+                  <Text style={s.meta} numberOfLines={1} ellipsizeMode="tail">{(item.counterparty ? `Recibido de ${item.counterparty}` : (cats.find(c => c.id === item.category_id)?.label ?? (item.type === "income" ? "Ingreso" : item.type === "transfer" ? "Transferencia" : "Sin categoría")))} · {fmtDate(item.date)}</Text>
+                </View>
                 {isPending(item) && reviewLabel(reviewReason(item)) && (
                   <Text style={s.reviewReason} numberOfLines={2} ellipsizeMode="tail">{reviewLabel(reviewReason(item))}</Text>
                 )}
@@ -282,14 +282,15 @@ const s = StyleSheet.create({
   row: { backgroundColor: C.surface, padding: 14, borderRadius: 12, flexDirection: "row", alignItems: "center", gap: 10, minHeight: 68 },
   rowPending: { borderLeftWidth: 3, borderLeftColor: "#f59e0b" },
   center: { flex: 1, minWidth: 0, justifyContent: "center" },
-  rowHeader: { flexDirection: "row", alignItems: "center", gap: 8, minWidth: 0 },
+  rowHeader: { flexDirection: "row", alignItems: "center", gap: 8, minWidth: 0, flex: 1 },
   badges: { flexShrink: 0, flexDirection: "row", alignItems: "center", gap: 6 },
-  classChip: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: R.pill, backgroundColor: C.surfaceAlt, borderWidth: 1, borderColor: C.border },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  classChip: { flexShrink: 0, paddingHorizontal: 8, paddingVertical: 3, borderRadius: R.pill, backgroundColor: C.surfaceAlt, borderWidth: 1, borderColor: C.border },
   classChipAudit: { backgroundColor: "rgba(251,191,36,0.14)", borderColor: "rgba(251,191,36,0.35)" },
   classChipText: { fontSize: 11, fontWeight: "700", color: C.dim },
   classChipTextAudit: { color: C.warning },
   merchant: { color: C.text, fontWeight: "600", flex: 1, minWidth: 0 },
-  meta: { color: C.dim, fontSize: 12 },
+  meta: { color: C.dim, fontSize: 12, flex: 1, minWidth: 0 },
   reviewReason: { color: "#f59e0b", fontSize: 11, marginTop: 2 },
   amount: { fontWeight: "800", flexShrink: 0 },
   confirmBtn: { backgroundColor: "#10b981", width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
