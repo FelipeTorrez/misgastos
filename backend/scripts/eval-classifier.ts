@@ -16,8 +16,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createAIProvider } from "../src/ai/providers/AIProvider.js";
+import { DEFAULT_GROQ_MODEL } from "../src/ai/providers/GroqProvider.js";
+import { FINAN_SYSTEM_PROMPT } from "../src/ai/prompts/agente-financiero.js";
 import { parseEmail, normalizeForAI } from "../src/modules/ingestion/parser.js";
-import { computeAccuracy, toMarkdown } from "../src/lib/evalClassifier.js";
+import { buildEvalUserRules, computeAccuracy, estimateRequestSize, toMarkdown } from "../src/lib/evalClassifier.js";
 
 // Carga backend/.env (lectura simple KEY=VAL, sin dependencias nuevas) para que
 // GROQ_API_KEY y GROQ_MODEL estén disponibles al invocar el script a mano sin
@@ -66,6 +68,7 @@ type Args = {
   out?: string;
   userId?: string;
   sleep: number;
+  verbose: boolean;
 };
 
 function parseArgs(argv: string[]): Args {
@@ -74,6 +77,7 @@ function parseArgs(argv: string[]): Args {
     limit: 20,
     dry: false,
     sleep: 12000,
+    verbose: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -86,8 +90,9 @@ function parseArgs(argv: string[]): Args {
     else if (a === "--out" && next) { args.out = next; i++; }
     else if (a === "--user" && next) { args.userId = next; i++; }
     else if (a === "--sleep" && next) { args.sleep = Math.max(0, parseInt(next, 10) || 0); i++; }
+    else if (a === "--verbose") { args.verbose = true; }
     else if (a === "--help" || a === "-h") {
-      console.log("Uso: npx tsx scripts/eval-classifier.ts [--api URL] [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N] [--dry] [--out path.md] [--user x-user-id] [--sleep MS]");
+      console.log("Uso: npx tsx scripts/eval-classifier.ts [--api URL] [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N] [--dry] [--out path.md] [--user x-user-id] [--sleep MS] [--verbose]");
       process.exit(0);
     }
   }
@@ -194,8 +199,14 @@ async function main() {
   }
 
   const provider = createAIProvider("groq");
+  const model = process.env.GROQ_MODEL ?? DEFAULT_GROQ_MODEL;
   const categorySlugs = [...new Set([...idToSlug.values()])].filter((s) => s && s !== "ahorro");
-  const userRules = [...ruleCatByMerchant.entries()].slice(0, 20).map(([merchant, preferred_category]) => ({ merchant, preferred_category }));
+  // Paridad con la ingesta real (ingestion/routes.ts usa `.limit(20)`): el harness
+  // pasa solo las primeras 20 reglas como user_rules. Cada regla pesa ~15 tokens;
+  // pasarlas todas (~124) suma ~1.900 tokens y empuja a 429 con 8.000 tok/min.
+  const userRules = buildEvalUserRules(
+    [...ruleCatByMerchant.entries()].map(([merchant, preferred_category]) => ({ merchant, preferred_category })),
+  );
   const cases: { id: string; expected: string; predicted: string; merchant?: string; amount?: number; fallback?: boolean }[] = [];
   let fallbackCount = 0;
 
@@ -205,10 +216,24 @@ async function main() {
     const text: string = raw.raw_content ?? raw.metadata?.normalized ?? "";
     if (!text) { skippedNoRaw.push(tx); continue; }
     const p = parseEmail(text);
+    const normalized = normalizeForAI(text);
+    const parserHints = { amount: p.amount ?? tx.amount, date: p.date ?? undefined, merchant_guess: p.merchant ?? tx.merchant ?? undefined };
+    const categories = categorySlugs.length > 0 ? categorySlugs : ["alimentacion", "transporte", "suscripciones", "restaurantes", "servicios", "otros"];
+    if (args.verbose) {
+      // Mismo armado que GroqProvider.classify (system + user JSON) para estimar
+      // el tamaño del request y diagnosticar 429 sin adivinar.
+      const rulesHint = userRules.length
+        ? `Reglas usuario (prioridad): ${userRules.map((r) => `${r.merchant}→${r.preferred_category}`).join("; ")}`
+        : "Sin reglas";
+      const system = FINAN_SYSTEM_PROMPT.replace("[CATEGORIES]", categories.join(", "));
+      const userJson = JSON.stringify({ normalized_text: normalized.slice(0, 500), parser_hints: parserHints, categories, rules_hint: rulesHint, locale: "es-CL" });
+      const size = estimateRequestSize(system, userJson);
+      console.log(`[${i + 1}/${evaluable.length}] id=${tx.id} request≈${size.chars} chars (~${size.approxTokens} tokens) rules=${userRules.length}`);
+    }
     const ai = await provider.classify({
-      normalized_text: normalizeForAI(text),
-      parser_hints: { amount: p.amount ?? tx.amount, date: p.date ?? undefined, merchant_guess: p.merchant ?? tx.merchant ?? undefined },
-      categories: categorySlugs.length > 0 ? categorySlugs : ["alimentacion", "transporte", "suscripciones", "restaurantes", "servicios", "otros"],
+      normalized_text: normalized,
+      parser_hints: parserHints,
+      categories,
       user_rules: userRules,
       locale: "es-CL",
     });
@@ -229,11 +254,12 @@ async function main() {
   const header = [
     `# Evaluación del clasificador`,
     ``,
+    `- Modelo: **${model}** · reglas usuario: **${userRules.length}**`,
     `- Rango: ${args.from ?? "—"} → ${args.to ?? "—"} · API: ${args.api} · casos: ${cases.length} (evaluables: ${report.total} · no evaluables (fallback Groq): ${report.skippedFallback})`,
     `- Corregidas totales: ${corrected.length} · sin raw_event: ${skippedNoRaw.length} · sin categoría: ${skippedNoLabel.length} · fallback Groq→mock: ${fallbackCount}`,
     ``,
   ].join("\n");
-  emit(header + toMarkdown(report), args.out);
+  emit(header + toMarkdown(report, { model, ruleCount: userRules.length }), args.out);
 }
 
 function emit(md: string, out?: string) {
