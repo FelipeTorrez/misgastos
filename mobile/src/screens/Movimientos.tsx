@@ -1,6 +1,6 @@
 import { View, Text, FlatList, ScrollView, StyleSheet, TouchableOpacity, Pressable } from "react-native";
 import { useEffect, useState } from "react";
-import { fmtCLP, fmtDate } from "../lib/format";
+import { fmtCLP, fmtDate, shortDate } from "../lib/format";
 import { API_URL } from "../lib/supabase";
 import { Category } from "../lib/categories";
 import { C, R } from "../theme/tokens";
@@ -156,7 +156,7 @@ export function Movimientos({ txs, cats, month, filterCategory, onClearFilter, o
       <FlatList
         data={filtered}
         keyExtractor={i => i.id}
-        contentContainerStyle={{ padding: 16, paddingBottom: 96 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 140 }}
         ListEmptyComponent={<Text style={s.muted}>{filterCategory ? "Sin movimientos en esta categoría." : "Aún no hay movimientos este mes. Usa el botón +."}</Text>}
         renderItem={({ item }) => (
           <SwipeRow onDelete={() => deleteTx(item)}>
@@ -171,7 +171,7 @@ export function Movimientos({ txs, cats, month, filterCategory, onClearFilter, o
                 <View style={s.metaRow}>
                   {item.status !== "confirmed" && <StatusBadge status={item.status} />}
                   <ClassificationChip tx={item} />
-                  <Text style={s.meta} numberOfLines={1} ellipsizeMode="tail">{(item.counterparty ? `Recibido de ${item.counterparty}` : (cats.find(c => c.id === item.category_id)?.label ?? (item.type === "income" ? "Ingreso" : item.type === "transfer" ? "Transferencia" : "Sin categoría")))} · {fmtDate(item.date)}</Text>
+                  <Text style={s.meta} numberOfLines={1} ellipsizeMode="tail">{(item.counterparty ? `Recibido de ${item.counterparty}` : (cats.find(c => c.id === item.category_id)?.label ?? (item.type === "income" ? "Ingreso" : item.type === "transfer" ? "Transferencia" : "Sin categoría")))} · {shortDate(item.date)}</Text>
                 </View>
                 {isPending(item) && reviewLabel(reviewReason(item)) && (
                   <Text style={s.reviewReason} numberOfLines={2} ellipsizeMode="tail">{reviewLabel(reviewReason(item))}</Text>
