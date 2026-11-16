@@ -102,6 +102,32 @@ export async function transactionRoutes(app: FastifyInstance) {
     return reply.status(201).send(data);
   });
 
+  app.get("/v1/transactions/:id", async (req: any, reply: any) => {
+    const userId = getUserId(req);
+    const id = req.params.id as string;
+    if (isMockMode) {
+      const tx = mockStore.getTransaction(userId, id);
+      if (!tx) return reply.status(404).send({ error: "transaction not found" });
+      let raw_event: any = null;
+      if (tx.raw_event_id) {
+        const re = mockStore.getRawEvent(tx.raw_event_id, userId);
+        if (re) raw_event = { id: re.id, source: re.source, sender: re.sender, subject: re.subject, received_at: re.received_at, raw_content: re.raw_content };
+      }
+      return { ...tx, review_reason: tx?.metadata?.review_reason ?? null, raw_event };
+    }
+    const { data: txData, error: txError } = await supabase.from("transactions").select("*").eq("id", id).eq("user_id", userId).limit(1);
+    if (txError) return reply.status(503).send({ error: txError.message, code: "db_unavailable" });
+    const tx = ((txData ?? []) as any[])[0] ?? null;
+    if (!tx) return reply.status(404).send({ error: "transaction not found" });
+    let raw_event: any = null;
+    if (tx.raw_event_id) {
+      const { data: reData, error: reError } = await supabase.from("raw_events").select("id, source, sender, subject, received_at, raw_content").eq("id", tx.raw_event_id).eq("user_id", userId).limit(1);
+      if (reError) return reply.status(503).send({ error: reError.message, code: "db_unavailable" });
+      raw_event = ((reData ?? []) as any[])[0] ?? null;
+    }
+    return { ...tx, review_reason: tx?.metadata?.review_reason ?? null, raw_event };
+  });
+
   app.patch("/v1/transactions/:id", async (req: any, reply) => {
     const userId = getUserId(req);
     const body = { ...((req.body ?? {}) as any) };

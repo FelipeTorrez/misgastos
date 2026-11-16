@@ -35,6 +35,11 @@ export function Movimientos({ txs, cats, month, filterCategory, onClearFilter, o
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
   const [savePref, setSavePref] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
+  const [rawEvent, setRawEvent] = useState<any>(null);
+  const [rawLoading, setRawLoading] = useState(false);
+  const [rawError, setRawError] = useState<string | null>(null);
+  const [rawExpanded, setRawExpanded] = useState(false);
+  const [rawTextExpanded, setRawTextExpanded] = useState(false);
 
   useEffect(() => { setLocal(txs); }, [txs]);
   const notify = (m: string) => { setToast(m); setTimeout(() => setToast(null), 2600); };
@@ -62,6 +67,30 @@ export function Movimientos({ txs, cats, month, filterCategory, onClearFilter, o
     setEditingTx(tx);
     setSelectedCat(tx.category_id ?? null);
     setSavePref(true);
+    setRawEvent(null);
+    setRawError(null);
+    setRawLoading(false);
+    setRawExpanded(false);
+    setRawTextExpanded(false);
+  }
+
+  async function loadRawEvent() {
+    if (rawEvent) { setRawExpanded(v => !v); return; }
+    if (!editingTx || rawLoading) return;
+    setRawLoading(true);
+    setRawError(null);
+    try {
+      const res = await fetch(`${API_URL}/v1/transactions/${editingTx.id}`).catch(() => null);
+      if (!res || !res.ok) { setRawError("No se pudo cargar el correo original"); return; }
+      const j = await res.json().catch(() => null);
+      if (!j?.raw_event) { setRawError("Este movimiento no tiene correo original guardado"); return; }
+      setRawEvent(j.raw_event);
+      setRawExpanded(true);
+    } catch {
+      setRawError("Error de red");
+    } finally {
+      setRawLoading(false);
+    }
   }
 
   async function saveCategory() {
@@ -201,6 +230,26 @@ export function Movimientos({ txs, cats, month, filterCategory, onClearFilter, o
               </View>
             </TouchableOpacity>
 
+            <TouchableOpacity style={s.rawBtn} onPress={loadRawEvent} activeOpacity={0.8}>
+              <MIcon name="email-outline" size={16} color={C.primary} />
+              <Text style={s.rawBtnText}>
+                {rawLoading ? "Cargando correo…" : rawEvent ? (rawExpanded ? "Ocultar correo original" : "Ver correo original") : "Ver correo original"}
+              </Text>
+            </TouchableOpacity>
+            {rawError && <Text style={s.rawError}>{rawError}</Text>}
+            {rawEvent && rawExpanded && (
+              <View style={s.rawBox}>
+                <Text style={s.rawMeta} numberOfLines={1} ellipsizeMode="tail">
+                  {rawEvent.sender ?? "Remitente desconocido"}{rawEvent.received_at ? ` · ${fmtDate(rawEvent.received_at)}` : ""}
+                </Text>
+                {!!rawEvent.subject && <Text style={s.rawSubject} numberOfLines={1} ellipsizeMode="tail">{rawEvent.subject}</Text>}
+                <Text style={s.rawContent} numberOfLines={rawTextExpanded ? undefined : 4}>{rawEvent.raw_content}</Text>
+                <TouchableOpacity onPress={() => setRawTextExpanded(v => !v)} activeOpacity={0.8}>
+                  <Text style={s.rawToggle}>{rawTextExpanded ? "Ver menos" : "Ver más"}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             <View style={s.btnRow}>
               <TouchableOpacity style={[s.btn, { flex: 1, backgroundColor: C.surfaceAlt }]} onPress={() => setEditingTx(null)}>
                 <Text style={s.btnText}>Cancelar</Text>
@@ -262,6 +311,14 @@ const s = StyleSheet.create({
   switchOn: { backgroundColor: C.primary, borderColor: C.primary },
   switchThumb: { width: 20, height: 20, borderRadius: 999, backgroundColor: C.dim, alignSelf: "flex-start" },
   switchThumbOn: { alignSelf: "flex-end", backgroundColor: "#04121F" },
+  rawBtn: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 14, padding: 12, borderRadius: R.md, backgroundColor: C.surfaceAlt, borderWidth: 1, borderColor: C.border },
+  rawBtnText: { color: C.primary, fontWeight: "700", fontSize: 13 },
+  rawError: { color: C.warning, fontSize: 12, marginTop: 8 },
+  rawBox: { marginTop: 8, padding: 12, borderRadius: R.md, backgroundColor: C.surfaceAlt, borderWidth: 1, borderColor: C.border, gap: 6 },
+  rawMeta: { color: C.dim, fontSize: 12 },
+  rawSubject: { color: C.text, fontWeight: "700", fontSize: 13 },
+  rawContent: { color: C.text, fontSize: 12, lineHeight: 17 },
+  rawToggle: { color: C.primary, fontWeight: "700", fontSize: 12, marginTop: 2 },
   btnRow: { flexDirection: "row", gap: 10, marginTop: 16 },
   btn: { padding: 14, borderRadius: R.md, alignItems: "center" },
   btnText: { color: C.text, fontWeight: "700" },

@@ -55,7 +55,7 @@ async function processIngestion(data: any, userId: string) {
   if (external_id) {
     let existingId: string | null = null;
     if (isMockMode) {
-      existingId = mockStore.rawEvents?.[`${source}:${external_id}`] ?? null;
+      existingId = mockStore.findRawEventByExternal(userId, source, external_id ?? null)?.id ?? null;
     } else {
       const { data: existing, error } = await supabase.from("raw_events").select("id").eq("source", source).eq("external_id", external_id).eq("user_id", userId).limit(1);
       if (error) return { status: 500, body: { error: `raw_events lookup: ${error.message}` } };
@@ -69,13 +69,8 @@ async function processIngestion(data: any, userId: string) {
   let rawEvent: any;
   const rawMetadata: any = { normalized, allowlist_hit: senderAllowlisted, sender };
   if (isMockMode) {
-    rawEventId = `mock-${crypto.randomUUID()}`;
-    rawEvent = { id: rawEventId, user_id: userId, source, external_id: external_id ?? null, sender: sender ?? null, subject: subject ?? null, received_at: received_at ?? new Date().toISOString(), mocked: true, metadata: rawMetadata };
-    mockStore.rawEvents = mockStore.rawEvents ?? {};
-    mockStore.rawEvents[`${source}:${external_id}`] = rawEventId;
-    (mockStore as any).rawEventsMeta = (mockStore as any).rawEventsMeta ?? {};
-    (mockStore as any).rawEventsMeta[rawEventId] = rawMetadata;
-    mockStore._persist();
+    rawEvent = mockStore.insertRawEvent(userId, { source, external_id: external_id ?? null, sender: sender ?? null, subject: subject ?? null, raw_content, received_at: received_at ?? new Date().toISOString(), metadata: rawMetadata, mocked: true });
+    rawEventId = rawEvent.id;
   } else {
     const { data: raw, error } = await supabase.from("raw_events").insert({ user_id: userId, source, external_id: external_id ?? null, sender: sender ?? null, subject: subject ?? null, raw_content, received_at: received_at ?? new Date().toISOString(), metadata: rawMetadata }).select().single();
     if (error) return { status: 500, body: { error: `raw_events insert: ${error.message}` } };
@@ -155,8 +150,8 @@ async function processIngestion(data: any, userId: string) {
         // Actualizar raw metadata con guard result (best effort)
         if (!isMockMode) {
           await supabase.from("raw_events").update({ metadata: { ...rawMetadata, guard: { is_transaction: false, reason: ai.reason, confidence: ai.confidence } } }).eq("id", rawEventId);
-        } else if ((mockStore as any).rawEventsMeta) {
-          (mockStore as any).rawEventsMeta[rawEventId] = { ...rawMetadata, guard: { is_transaction: false, reason: ai.reason } };
+        } else {
+          mockStore.updateRawEvent(rawEventId, { metadata: { ...rawMetadata, guard: { is_transaction: false, reason: ai.reason } } });
         }
         return {
           status: 200,

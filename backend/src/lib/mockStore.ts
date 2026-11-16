@@ -8,13 +8,47 @@ import path from "node:path";
 
 const FILE = path.join(process.cwd(), ".mockstore.json");
 
+export type MockRawEvent = {
+  id: string;
+  user_id: string;
+  source: string;
+  external_id: string | null;
+  sender: string | null;
+  subject: string | null;
+  raw_content: string;
+  received_at: string;
+  metadata?: any;
+  mocked?: boolean;
+};
+
 type DiskData = {
   rules: any[];
   transactions: any[];
   budgets: any[];
-  rawEvents: Record<string, string>;
+  rawEvents: MockRawEvent[] | Record<string, string>;
   settings: Record<string, any>;
 };
+
+/** Compat: el shape viejo era un mapa source:external_id → id (solo idempotencia). */
+function toRawEventList(raw: unknown): MockRawEvent[] {
+  if (Array.isArray(raw)) return raw as MockRawEvent[];
+  if (raw && typeof raw === "object") {
+    return Object.entries(raw as Record<string, string>).map(([key, id]) => {
+      const sep = key.indexOf(":");
+      return {
+        id: String(id),
+        user_id: "",
+        source: sep >= 0 ? key.slice(0, sep) : key,
+        external_id: sep >= 0 ? key.slice(sep + 1) : null,
+        sender: null,
+        subject: null,
+        raw_content: "",
+        received_at: new Date().toISOString(),
+      } as MockRawEvent;
+    });
+  }
+  return [];
+}
 
 function loadFromDisk(): DiskData | null {
   if (process.env.NODE_ENV === "test") return null;
@@ -26,7 +60,7 @@ function loadFromDisk(): DiskData | null {
         rules: d.rules,
         transactions: d.transactions,
         budgets: Array.isArray(d.budgets) ? d.budgets : [],
-        rawEvents: (d.rawEvents && typeof d.rawEvents === "object") ? d.rawEvents : {},
+        rawEvents: toRawEventList(d.rawEvents),
         settings: (d.settings && typeof d.settings === "object") ? d.settings : {},
       };
     }
@@ -44,7 +78,7 @@ export const mockStore = {
   rules: initial?.rules ?? ([] as any[]),
   transactions: initial?.transactions ?? ([] as any[]),
   budgets: initial?.budgets ?? ([] as any[]),
-  rawEvents: initial?.rawEvents ?? ({} as Record<string, string>),
+  rawEvents: ((initial?.rawEvents ?? []) as MockRawEvent[]),
   settings: initial?.settings ?? ({} as Record<string, any>),
 
   _persist() {
@@ -135,7 +169,43 @@ export const mockStore = {
     this._persist();
   },
 
+  // Raw events (auditoría: correo/notificación original del gasto)
+  insertRawEvent(userId: string, data: { source: string; external_id?: string | null; sender?: string | null; subject?: string | null; raw_content: string; received_at?: string; metadata?: any; mocked?: boolean }) {
+    const row: MockRawEvent = {
+      id: `mock-${uuid()}`,
+      user_id: userId,
+      source: data.source,
+      external_id: data.external_id ?? null,
+      sender: data.sender ?? null,
+      subject: data.subject ?? null,
+      raw_content: data.raw_content,
+      received_at: data.received_at ?? new Date().toISOString(),
+      metadata: data.metadata,
+      mocked: data.mocked,
+    };
+    this.rawEvents.push(row);
+    this._persist();
+    return row;
+  },
+  getRawEvent(id: string, userId?: string) {
+    return this.rawEvents.find(r => r.id === id && (!userId || !r.user_id || r.user_id === userId)) ?? null;
+  },
+  findRawEventByExternal(userId: string, source: string, external_id: string | null) {
+    if (!external_id) return null;
+    return this.rawEvents.find(r => r.source === source && r.external_id === external_id && (!r.user_id || r.user_id === userId)) ?? null;
+  },
+  updateRawEvent(id: string, patch: Partial<MockRawEvent>) {
+    const row = this.rawEvents.find(r => r.id === id);
+    if (!row) return null;
+    Object.assign(row, patch);
+    this._persist();
+    return row;
+  },
+
   // Transactions
+  getTransaction(userId: string, txId: string) {
+    return this.transactions.find(t => t.id === txId && t.user_id === userId) ?? null;
+  },
   listTransactions(userId: string, filters?: { month?: string; from?: string; to?: string; category_id?: string; account_id?: string; limit?: number }) {
     let list = this.transactions.filter(t => t.user_id === userId);
     if (filters?.month) {
@@ -178,6 +248,7 @@ export const mockStore = {
     this.rules.length = 0;
     this.transactions.length = 0;
     this.budgets.length = 0;
+    this.rawEvents.length = 0;
     this._persist();
   }
 };
