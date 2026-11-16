@@ -47,13 +47,16 @@ fi
 echo "✔ APK: $MOBILE_DIR/android/$APK"
 
 # --- 2. Instalar por USB ---
+# adb es un binario nativo de Windows: NO acepta rutas estilo MSYS (/c/...).
+# cygpath -w las convierte a C:\... y evita "failed to stat ... No such file or directory".
+APK_NATIVE="$(cygpath -w "$MOBILE_DIR/android/$APK" 2>/dev/null || echo "$MOBILE_DIR/android/$APK")"
 DEV=$(adb devices | awk 'NR>1 && $2=="device"{print $1; exit}')
 if [ -z "${DEV:-}" ]; then
   echo "⚠ ningún dispositivo conectado (USB debugging). APK lista igual: $APK"
   exit 0
 fi
 echo "→ instalando en $DEV"
-adb -s "$DEV" install -r "$MOBILE_DIR/android/$APK"
+adb -s "$DEV" install -r "$APK_NATIVE"
 
 if [ "$VARIANT" != "release" ]; then
   # Metro y backend local por el cable: no depende del wifi.
