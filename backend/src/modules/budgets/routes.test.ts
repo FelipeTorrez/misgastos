@@ -104,4 +104,21 @@ describe("GET /v1/budgets — validación month/from/to", () => {
     expect(r1.json()).toEqual(r2.json());
     expect(r1.json()).toHaveLength(1);
   });
+
+  it("from/to a caballo de 2 meses prorratea amount y expone range", async () => {
+    db.budgets = [
+      { id: "b1", user_id: "u1", category_id: "cat-1", amount: 31000, month: "2026-10-01", categories: { name: "Comida", slug: "food" } },
+      { id: "b2", user_id: "u1", category_id: "cat-1", amount: 30000, month: "2026-11-01", categories: { name: "Comida", slug: "food" } },
+    ];
+    const app = Fastify();
+    await app.register(budgetRoutes);
+    const res = await app.inject({ method: "GET", url: "/v1/budgets?from=2026-10-20&to=2026-11-19" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toHaveLength(1);
+    // oct: 12/31, nov: 19/30
+    const expected = Math.round(31000 * 12 / 31) + Math.round(30000 * 19 / 30);
+    expect(body[0].amount).toBe(expected);
+    expect(body[0].range).toEqual({ from: "2026-10-20", to: "2026-11-19" });
+  });
 });
