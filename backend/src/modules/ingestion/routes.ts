@@ -5,6 +5,7 @@ import { parseEmail, normalizeForAI } from "./parser.js";
 import { isDuplicate } from "./dedup.js";
 import { mockStore } from "../../lib/mockStore.js";
 import { normalizeMerchant, findBestRuleMatch } from "../../lib/merchantNorm.js";
+import { get as classifyCacheGet, set as classifyCacheSet } from "../../lib/classifyCache.js";
 import { allowlistHit } from "./allowlist.js";
 import { inferDirection } from "../../ai/prompts/agente-financiero.js";
 
@@ -92,6 +93,7 @@ async function processIngestion(data: any, userId: string) {
   let classificationSource: string = "parser";
   let matchedRule: any = null;
   let ai: any = null;
+  let aiFromCache = false;
 
   // Step 1: reglas contra merchant del parser (solo si hay monto)
   if (p.amount !== null && p.merchant) {
@@ -100,6 +102,34 @@ async function processIngestion(data: any, userId: string) {
 
   // Step 2+3: AI guard obligatorio cuando hay monto detectado
   if (p.amount !== null && !matchedRule) {
+    // Paso 2a: cache por comercio — si ya se clasificó con alta confianza,
+    // reutilizar sin instanciar el provider (ahorra cupo del LLM).
+    if (p.merchant) {
+      const cached = classifyCacheGet(p.merchant);
+      if (cached) {
+        aiFromCache = true;
+        ai = {
+          is_transaction: true,
+          transaction_type: cached.direction === "in" ? "income" : cached.direction === "internal" ? "transfer" : "expense",
+          direction: cached.direction,
+          amount: p.amount,
+          currency: p.currency ?? "CLP",
+          merchant: cached.merchant,
+          counterparty: null,
+          category: cached.category,
+          date: p.date ?? new Date().toISOString().slice(0, 10),
+          account_hint: null,
+          payment_method: cached.payment_method,
+          installment: null,
+          is_recurring_candidate: cached.is_recurring_candidate,
+          is_transfer_candidate: cached.direction === "internal",
+          confidence: cached.confidence,
+          needs_review: false,
+          reason: "ai_cache: comercio clasificado antes",
+        };
+      }
+    }
+    if (!aiFromCache) {
     try {
       const { createAIProvider } = await import("../../ai/providers/AIProvider.js");
       const provider = createAIProvider(process.env.GROQ_API_KEY ? "groq" : "mock");
@@ -161,6 +191,23 @@ async function processIngestion(data: any, userId: string) {
         }
       };
     }
+    }
+    // Step 3 (cache hit): una regla creada después del cacheo manda igual.
+    if (aiFromCache && ai?.merchant && ai.merchant !== "Desconocido") {
+      matchedRule = await findRule(userId, ai.merchant);
+    }
+    // Poblar cache en miss: solo clasificaciones reutilizables de alta
+    // confianza, sin fallback y de transacción real. NUNCA amount/date.
+    if (!aiFromCache && ai && ai.is_transaction !== false && ai.confidence >= 0.9 && !(ai as any).provider_fallback && ai.merchant && ai.merchant !== "Desconocido") {
+      classifyCacheSet(ai.merchant, {
+        category: ai.category,
+        merchant: ai.merchant,
+        payment_method: ai.payment_method,
+        direction: ai.direction,
+        is_recurring_candidate: ai.is_recurring_candidate ?? false,
+        confidence: ai.confidence,
+      });
+    }
   }
 
   // Si no hay monto, no hay transacción (sin llamar a IA) — solo raw_event
@@ -194,8 +241,12 @@ async function processIngestion(data: any, userId: string) {
     if (ai.counterparty) finalCounterparty = ai.counterparty;
     aiConfidence = ai.confidence ?? p.confidence;
     aiNeedsReview = ai.needs_review ?? (p.confidence < 0.6);
-    classificationSource = (ai as any)?.provider_fallback ? "fallback" : "ai";
-    if (classificationSource === "fallback") aiNeedsReview = true;
+    if (aiFromCache) {
+      classificationSource = "ai_cache";
+    } else {
+      classificationSource = (ai as any)?.provider_fallback ? "fallback" : "ai";
+      if (classificationSource === "fallback") aiNeedsReview = true;
+    }
   }
   // Fallback dirección si aún no seteada y hay monto (parser sin IA o regla sin AI)
   if (!finalDirection && p.amount !== null) {

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { supabase, getUserId, isMockMode } from "../../lib/supabase.js";
 import { mockStore } from "../../lib/mockStore.js";
 import { normalizeMerchant, findBestRuleMatch } from "../../lib/merchantNorm.js";
+import { del as classifyCacheDel } from "../../lib/classifyCache.js";
 import { monthBounds } from "../../lib/dateRange.js";
 import { TransactionsQuery, DateTimeQuery } from "../../lib/queryDates.js";
 
@@ -108,6 +109,11 @@ export async function transactionRoutes(app: FastifyInstance) {
     if (isMockMode) {
       const tx = mockStore.updateTransaction(userId, req.params.id, patchData);
       if (!tx) return reply.status(404).send({ error: "transaction not found" });
+      // Al corregir categoría, una clasificación cacheada mala queda congelada:
+      // invalidar para que la próxima ingesta de este comercio reclasifique.
+      if (parsed.data.category_id && tx.merchant) {
+        classifyCacheDel(normalizeMerchant(tx.merchant));
+      }
       // Learn rule on category correction (solo si update_rule !== false)
       if (updateRule && parsed.data.category_id && tx.merchant) {
         const norm = normalizeMerchant(tx.merchant);
@@ -123,6 +129,10 @@ export async function transactionRoutes(app: FastifyInstance) {
     }
     const { data, error } = await supabase.from("transactions").update({ ...patchData, updated_at: new Date().toISOString() }).eq("id", req.params.id).eq("user_id", userId).select().single();
     if (error) return reply.status(400).send({ error: error.message });
+    // Al corregir categoría, invalidar el cache de este comercio (ver rama mock).
+    if (parsed.data.category_id && (data as any)?.merchant) {
+      classifyCacheDel(normalizeMerchant((data as any).merchant));
+    }
     if (updateRule && parsed.data.category_id && data.merchant) {
       const norm = normalizeMerchant(data.merchant);
       await supabase.from("rules").upsert({ user_id: userId, merchant_normalized: norm, preferred_category_id: parsed.data.category_id }, { onConflict: "user_id,merchant_normalized" });
