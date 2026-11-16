@@ -4,6 +4,7 @@ import { supabase, getUserId, isMockMode } from "../../lib/supabase.js";
 import { parseEmail, normalizeForAI } from "./parser.js";
 import { isDuplicate } from "./dedup.js";
 import { mockStore } from "../../lib/mockStore.js";
+import { normalizeMerchant, findBestRuleMatch } from "../../lib/merchantNorm.js";
 import { allowlistHit } from "./allowlist.js";
 import { inferDirection } from "../../ai/prompts/agente-financiero.js";
 
@@ -20,11 +21,21 @@ const EmailIngest = z.object({
   source: z.enum(["gmail", "android_notification", "manual"]).optional().default("gmail"),
 });
 
-async function findRule(userId: string, merchantNormalized: string) {
-  if (isMockMode) return mockStore.findRule(userId, merchantNormalized);
+async function findRule(userId: string, merchantRaw: string) {
+  const merchantNormalized = normalizeMerchant(merchantRaw);
+  if (!merchantNormalized) return null;
+  if (isMockMode) {
+    return mockStore.findRule(userId, merchantNormalized)
+      ?? findBestRuleMatch(merchantNormalized, mockStore.listRules(userId));
+  }
   const { data, error } = await supabase.from("rules").select("id, preferred_category_id, preferred_merchant_alias, hits_count").eq("user_id", userId).eq("merchant_normalized", merchantNormalized).limit(1);
   if (error) throw new Error(`findRule: ${error.message}`);
-  return ((data ?? []) as any[])[0] ?? null;
+  const exact = ((data ?? []) as any[])[0] ?? null;
+  if (exact) return exact;
+  // Segundo intento: prefijo/substring (regla >=6 chars, match más largo).
+  const { data: all, error: err2 } = await supabase.from("rules").select("id, preferred_category_id, preferred_merchant_alias, hits_count, merchant_normalized").eq("user_id", userId).limit(200);
+  if (err2) throw new Error(`findRule: ${err2.message}`);
+  return findBestRuleMatch(merchantNormalized, ((all ?? []) as any[]));
 }
 
 async function incrementHits(matchedRule: any) {
@@ -84,7 +95,7 @@ async function processIngestion(data: any, userId: string) {
 
   // Step 1: reglas contra merchant del parser (solo si hay monto)
   if (p.amount !== null && p.merchant) {
-    matchedRule = await findRule(userId, p.merchant.toLowerCase().trim());
+    matchedRule = await findRule(userId, p.merchant);
   }
 
   // Step 2+3: AI guard obligatorio cuando hay monto detectado
@@ -133,7 +144,7 @@ async function processIngestion(data: any, userId: string) {
 
       // Step 3: post-AI rule check (solo si es transacción real)
       if (ai?.merchant && ai.merchant !== "Desconocido") {
-        matchedRule = await findRule(userId, ai.merchant.toLowerCase().trim());
+        matchedRule = await findRule(userId, ai.merchant);
       }
     } catch (e: any) {
       console.error("AI classify error:", e?.message ?? e);

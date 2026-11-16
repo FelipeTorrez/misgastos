@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { supabase, getUserId, isMockMode } from "../../lib/supabase.js";
 import { mockStore } from "../../lib/mockStore.js";
+import { normalizeMerchant, findBestRuleMatch } from "../../lib/merchantNorm.js";
 import { monthBounds } from "../../lib/dateRange.js";
 import { TransactionsQuery, DateTimeQuery } from "../../lib/queryDates.js";
 
@@ -75,12 +76,16 @@ export async function transactionRoutes(app: FastifyInstance) {
     if (payload.merchant) payload.merchant = toTitleCase(payload.merchant.trim());
     // Si no trae categoría, intenta aplicar regla existente (ej: Jumbo → Supermercado)
     if (!payload.category_id && payload.merchant) {
-      const norm = payload.merchant.toLowerCase().trim();
+      const norm = normalizeMerchant(payload.merchant);
       let rule: any = null;
-      if (isMockMode) rule = mockStore.findRule(userId, norm);
+      if (isMockMode) rule = mockStore.findRule(userId, norm) ?? findBestRuleMatch(norm, mockStore.listRules(userId));
       else {
-        const { data } = await supabase.from("rules").select("preferred_category_id").eq("user_id", userId).eq("merchant_normalized", norm).limit(1);
+        const { data } = await supabase.from("rules").select("preferred_category_id, merchant_normalized").eq("user_id", userId).eq("merchant_normalized", norm).limit(1);
         rule = ((data ?? []) as any[])[0] ?? null;
+        if (!rule) {
+          const { data: all } = await supabase.from("rules").select("preferred_category_id, merchant_normalized").eq("user_id", userId).limit(200);
+          rule = findBestRuleMatch(norm, ((all ?? []) as any[]));
+        }
       }
       if (rule) payload.category_id = rule.preferred_category_id;
     }
@@ -105,7 +110,7 @@ export async function transactionRoutes(app: FastifyInstance) {
       if (!tx) return reply.status(404).send({ error: "transaction not found" });
       // Learn rule on category correction (solo si update_rule !== false)
       if (updateRule && parsed.data.category_id && tx.merchant) {
-        const norm = tx.merchant.toLowerCase().trim();
+        const norm = normalizeMerchant(tx.merchant);
         const existing = mockStore.findRule(userId, norm);
         if (existing) {
           mockStore.updateRule(userId, existing.id, { preferred_category_id: parsed.data.category_id });
@@ -119,7 +124,7 @@ export async function transactionRoutes(app: FastifyInstance) {
     const { data, error } = await supabase.from("transactions").update({ ...patchData, updated_at: new Date().toISOString() }).eq("id", req.params.id).eq("user_id", userId).select().single();
     if (error) return reply.status(400).send({ error: error.message });
     if (updateRule && parsed.data.category_id && data.merchant) {
-      const norm = data.merchant.toLowerCase().trim();
+      const norm = normalizeMerchant(data.merchant);
       await supabase.from("rules").upsert({ user_id: userId, merchant_normalized: norm, preferred_category_id: parsed.data.category_id }, { onConflict: "user_id,merchant_normalized" });
     }
     return data;
