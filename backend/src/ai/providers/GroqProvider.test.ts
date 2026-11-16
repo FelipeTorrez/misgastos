@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { GroqProvider } from "./GroqProvider.js";
+import { GroqProvider, DEFAULT_GROQ_MODEL } from "./GroqProvider.js";
 import { AgentOutputSchema } from "./AIProvider.js";
 
 const _origFetch = globalThis.fetch;
@@ -7,6 +7,7 @@ const _origFetch = globalThis.fetch;
 afterEach(() => {
   (globalThis as any).fetch = _origFetch;
   delete (process.env as any).GROQ_API_KEY;
+  delete (process.env as any).GROQ_MODEL;
 });
 
 function validLLMContent() {
@@ -134,5 +135,24 @@ describe("Phase 4 — AI Agent #1 (Groq) mock", () => {
     (p2 as any).apiKey = "test-key";
     const out2 = await p2.classify(baseInput as any);
     expect((out2 as any).provider_fallback).toBeDefined();
+  });
+  it("sin GROQ_MODEL usa DEFAULT_GROQ_MODEL (no el default viejo decomisionado)", async () => {
+    const prevModel = process.env.GROQ_MODEL;
+    delete (process.env as any).GROQ_MODEL;
+    try {
+      const bodies: any[] = [];
+      (globalThis as any).fetch = async (_url: any, opts: any) => {
+        bodies.push(JSON.parse(opts.body));
+        return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: validLLMContent() } }] }) } as any;
+      };
+      const p = new GroqProvider();
+      (p as any).apiKey = "test-key";
+      await p.classify(baseInput as any);
+      expect(bodies.length).toBeGreaterThan(0);
+      expect(bodies[0].model).toBe(DEFAULT_GROQ_MODEL);
+      expect(bodies[0].model).not.toBe("llama-3.1-70b-versatile");
+    } finally {
+      if (prevModel !== undefined) process.env.GROQ_MODEL = prevModel;
+    }
   });
 });

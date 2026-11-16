@@ -14,9 +14,48 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createAIProvider } from "../src/ai/providers/AIProvider.js";
 import { parseEmail, normalizeForAI } from "../src/modules/ingestion/parser.js";
 import { computeAccuracy, toMarkdown } from "../src/lib/evalClassifier.js";
+
+// Carga backend/.env (lectura simple KEY=VAL, sin dependencias nuevas) para que
+// GROQ_API_KEY y GROQ_MODEL estén disponibles al invocar el script a mano sin
+// exportar variables. No sobrescribe variables ya presentes en el entorno.
+function loadBackendEnv(): void {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    path.resolve(process.cwd(), ".env"),
+    path.resolve(here, "../.env"),
+  ];
+  for (const file of candidates) {
+    let raw: string;
+    try {
+      raw = fs.readFileSync(file, "utf8");
+    } catch {
+      continue;
+    }
+    for (const line of raw.split("\n")) {
+      let trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      if (trimmed.startsWith("export ")) trimmed = trimmed.slice(7).trim();
+      const eq = trimmed.indexOf("=");
+      if (eq <= 0) continue;
+      const key = trimmed.slice(0, eq).trim();
+      let val = trimmed.slice(eq + 1).trim();
+      if (
+        val.length >= 2 &&
+        ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'")))
+      ) {
+        val = val.slice(1, -1);
+      }
+      if (key && process.env[key] === undefined) process.env[key] = val;
+    }
+    return;
+  }
+}
+
+loadBackendEnv();
 
 type Args = {
   api: string;
