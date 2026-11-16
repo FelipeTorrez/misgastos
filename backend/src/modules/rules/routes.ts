@@ -3,9 +3,10 @@ import { z } from "zod";
 import { isMockMode } from "../../lib/supabase.js";
 import { supabase, getUserId } from "../../lib/supabase.js";
 import { mockStore } from "../../lib/mockStore.js";
+import { normalizeMerchant } from "../../lib/merchantNorm.js";
 
 const CreateRule = z.object({
-  merchant_normalized: z.string().min(1).max(100).transform(v => v.toLowerCase().trim()),
+  merchant_normalized: z.string().min(1).max(100).transform(v => normalizeMerchant(v)),
   preferred_category_id: z.string().uuid(),
   preferred_merchant_alias: z.string().max(100).optional(),
 });
