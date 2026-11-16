@@ -13,31 +13,101 @@
 #   ./scripts/build-apk.sh              # dev client (metro, hot reload)
 #   ./scripts/build-apk.sh release      # APK release standalone
 #   ./scripts/build-apk.sh dev --install-native  (default: instala por adb)
+#
+# Log del build: mobile/build-<variant>.log (se trunca en cada invocación;
+#   el reintento por transform corrupto añade al mismo archivo).
+#
+# Saneo quirúrgico de transforms:
+#   Si el build falla con
+#     'Could not read workspace metadata from .../transforms/<hash>/metadata.bin'
+#   o con 'Cannot snapshot ... not a regular file' que nombre un
+#   'transforms/<hash>', el script borra SOLO ~/.gradle/caches/8.13/transforms/<hash>
+#   (hash hexadecimal de 32 chars, validado por regex) y reintenta UNA sola vez.
+#   Cualquier otro fallo sale sin tocar la caché.
+#
+# Forzar el saneo a mano (si el auto-reintento no alcanza o Gradle sigue
+# inconsistente): copiar el <hash> del mensaje de error y correr
+#   ./gradlew --stop && rm -rf ~/.gradle/caches/8.13/transforms/<hash>
+# NUNCA borrar transforms/ entero: aborta builds en curso ("Device or resource busy").
 
 set -euo pipefail
 
 VARIANT="${1:-dev}"
 MOBILE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GRADLE_TRANSFORMS="$HOME/.gradle/caches/8.13/transforms"
+if [ "$VARIANT" = "release" ]; then
+  LOG_FILE="$MOBILE_DIR/build-release.log"
+else
+  LOG_FILE="$MOBILE_DIR/build-dev.log"
+fi
 
 cd "$MOBILE_DIR/android"
 
-# --- 1. Build ---
-# NOTA: no limpiar ~/.gradle/caches/8.13/transforms automáticamente.
-# Una versión anterior de este script lo hacía al detectar "not a regular file"
-# en cualquier log viejo, y terminaba borrando caché EN USO y abortando el build
-# ("Device or resource busy" + set -e). Si Gradle queda inconsistente, hacerlo a mano:
-#   ./gradlew --stop && rm -rf ~/.gradle/caches/8.13/transforms
-
 ABI_FLAG="-PreactNativeArchitectures=arm64-v8a"
 
+# --- 1. Build (con log a archivo) ---
+# run_build ejecuta el assemble correspondiente y vuelca todo a LOG_FILE.
+# Devuelve el exit code de gradlew (0 = OK).
+run_build() {
+  if [ "$VARIANT" = "release" ]; then
+    echo "→ assembleRelease ($ABI_FLAG)"
+    ./gradlew assembleRelease "$ABI_FLAG" --console=plain 2>&1 | tee -a "$LOG_FILE"
+    return "${PIPESTATUS[0]}"
+  else
+    echo "→ assembleDebug dev client ($ABI_FLAG)"
+    ./gradlew assembleDebug "$ABI_FLAG" --console=plain 2>&1 | tee -a "$LOG_FILE"
+    return "${PIPESTATUS[0]}"
+  fi
+}
+
+# Intenta el saneo quirúrgico: extrae transforms/<hash> del log, valida que el
+# hash sea hexadecimal de 32 chars, para el daemon y borra SOLO esa carpeta.
+# Echoa el hash en stdout si saneó; devuelve 1 si no había nada saneable.
+try_sanitize_corrupt_transform() {
+  local entry hash dir
+  if ! grep -Eq 'Could not read workspace metadata from|not a regular file' "$LOG_FILE"; then
+    return 1
+  fi
+  entry=$(grep -Eo 'transforms[/\\][0-9a-fA-F]{32}' "$LOG_FILE" | head -n 1 || true)
+  hash=$(printf '%s' "$entry" | grep -Eo '[0-9a-fA-F]{32}$' || true)
+  if [[ ! "$hash" =~ ^[0-9a-fA-F]{32}$ ]]; then
+    return 1
+  fi
+  dir="$GRADLE_TRANSFORMS/$hash"
+  case "$dir" in
+    "$GRADLE_TRANSFORMS/"*) ;;
+    *) echo "✖ hash válido pero ruta fuera de transforms, no toco nada: $dir" | tee -a "$LOG_FILE" >&2; return 1 ;;
+  esac
+  echo "⚠ transform corrupto detectado, saneando SOLO: $dir" | tee -a "$LOG_FILE" >&2
+  ./gradlew --stop 2>&1 | tee -a "$LOG_FILE" >&2 || true
+  rm -rf "$dir"
+  echo "✔ removido: $dir (reintento UNA vez)" | tee -a "$LOG_FILE" >&2
+  printf '%s' "$hash"
+  return 0
+}
+
+: > "$LOG_FILE"
+if run_build; then
+  BUILD_OK=1
+else
+  BUILD_OK=0
+  if SANITIZED_HASH=$(try_sanitize_corrupt_transform); then
+    echo "→ reintentando build UNA vez tras sanear $SANITIZED_HASH..." | tee -a "$LOG_FILE"
+    if run_build; then
+      BUILD_OK=1
+    else
+      BUILD_OK=0
+    fi
+  fi
+  if [ "$BUILD_OK" != "1" ]; then
+    echo "✖ build falló (ver $LOG_FILE)" | tee -a "$LOG_FILE"
+    exit 1
+  fi
+fi
+
 if [ "$VARIANT" = "release" ]; then
-  echo "→ assembleRelease ($ABI_FLAG)"
-  ./gradlew assembleRelease "$ABI_FLAG" --console=plain
   APK="app/build/outputs/apk/release/app-release.apk"
 else
-  echo "→ assembleDebug dev client ($ABI_FLAG)"
-  ./gradlew assembleDebug "$ABI_FLAG" --console=plain
   APK="app/build/outputs/apk/debug/app-debug.apk"
 fi
 
