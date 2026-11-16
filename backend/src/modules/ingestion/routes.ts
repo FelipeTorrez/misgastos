@@ -383,7 +383,19 @@ export async function ingestionRoutes(app: FastifyInstance) {
   });
   app.get("/v1/raw-events", async (req: any) => {
     const userId = getUserId(req);
-    const { data } = await supabase.from("raw_events").select("*").eq("user_id", userId).order("received_at", { ascending: false }).limit(50);
-    return data ?? [];
+    const q = (req.query ?? {}) as any;
+    let limit = Number.parseInt(String(q.limit ?? "50"), 10);
+    if (!Number.isFinite(limit)) limit = 50;
+    limit = Math.min(500, Math.max(1, Math.floor(limit)));
+    let offset = Number.parseInt(String(q.offset ?? "0"), 10);
+    if (!Number.isFinite(offset)) offset = 0;
+    offset = Math.max(0, Math.floor(offset));
+    const builder: any = supabase.from("raw_events").select("*").eq("user_id", userId).order("received_at", { ascending: false });
+    if (typeof builder.range === "function") {
+      const { data } = await builder.range(offset, offset + limit - 1);
+      return data ?? [];
+    }
+    const { data } = await builder.limit(offset + limit);
+    return ((data ?? []) as any[]).slice(offset, offset + limit);
   });
 }

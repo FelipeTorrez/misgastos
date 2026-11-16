@@ -26,6 +26,7 @@ type Args = {
   dry: boolean;
   out?: string;
   userId?: string;
+  sleep: number;
 };
 
 function parseArgs(argv: string[]): Args {
@@ -33,6 +34,7 @@ function parseArgs(argv: string[]): Args {
     api: process.env.API_URL ?? "http://localhost:3000",
     limit: 20,
     dry: false,
+    sleep: 12000,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -44,8 +46,9 @@ function parseArgs(argv: string[]): Args {
     else if (a === "--dry") { args.dry = true; }
     else if (a === "--out" && next) { args.out = next; i++; }
     else if (a === "--user" && next) { args.userId = next; i++; }
+    else if (a === "--sleep" && next) { args.sleep = Math.max(0, parseInt(next, 10) || 0); i++; }
     else if (a === "--help" || a === "-h") {
-      console.log("Uso: npx tsx scripts/eval-classifier.ts [--api URL] [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N] [--dry] [--out path.md] [--user x-user-id]");
+      console.log("Uso: npx tsx scripts/eval-classifier.ts [--api URL] [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N] [--dry] [--out path.md] [--user x-user-id] [--sleep MS]");
       process.exit(0);
     }
   }
@@ -71,12 +74,28 @@ async function main() {
   q.set("limit", "500");
   const qs = q.toString() ? `?${q}` : "";
 
-  const [categories, transactions, rawEvents, rules] = await Promise.all([
+  const [categories, transactions, rules] = await Promise.all([
     getJson(`${args.api}/v1/categories`, args.userId).catch(() => []),
     getJson(`${args.api}/v1/transactions${qs}`, args.userId).catch((e) => { throw e; }),
-    getJson(`${args.api}/v1/raw-events`, args.userId).catch(() => []),
     getJson(`${args.api}/v1/rules`, args.userId).catch(() => []),
   ]);
+
+  // Paginar raw-events en bloques de 500 hasta cubrir los raw_event_id
+  // pendientes (o agotar; corta si una página vuelve vacía).
+  const allTx0: any[] = Array.isArray(transactions) ? transactions : [];
+  const pendingRawIds = new Set<string>();
+  for (const t of allTx0) {
+    if (t?.status === "corrected" && t?.raw_event_id) pendingRawIds.add(String(t.raw_event_id));
+  }
+  const rawEvents: any[] = [];
+  for (let offset = 0; ; offset += 500) {
+    const page = await getJson(`${args.api}/v1/raw-events?limit=500&offset=${offset}`, args.userId).catch(() => []);
+    const arr = Array.isArray(page) ? page : [];
+    if (arr.length === 0) break;
+    rawEvents.push(...arr);
+    if (pendingRawIds.size > 0 && [...pendingRawIds].every((id) => rawEvents.some((r: any) => String(r?.id) === id))) break;
+    if (arr.length < 500) break;
+  }
 
   const idToSlug = new Map<string, string>();
   for (const c of categories ?? []) {
@@ -138,10 +157,12 @@ async function main() {
   const provider = createAIProvider("groq");
   const categorySlugs = [...new Set([...idToSlug.values()])].filter((s) => s && s !== "ahorro");
   const userRules = [...ruleCatByMerchant.entries()].slice(0, 20).map(([merchant, preferred_category]) => ({ merchant, preferred_category }));
-  const cases: { id: string; expected: string; predicted: string; merchant?: string; amount?: number }[] = [];
+  const cases: { id: string; expected: string; predicted: string; merchant?: string; amount?: number; fallback?: boolean }[] = [];
   let fallbackCount = 0;
 
-  for (const { tx, raw, expected } of evaluable) {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  for (let i = 0; i < evaluable.length; i++) {
+    const { tx, raw, expected } = evaluable[i];
     const text: string = raw.raw_content ?? raw.metadata?.normalized ?? "";
     if (!text) { skippedNoRaw.push(tx); continue; }
     const p = parseEmail(text);
@@ -152,21 +173,24 @@ async function main() {
       user_rules: userRules,
       locale: "es-CL",
     });
-    if ((ai as any)?.provider_fallback) fallbackCount++;
+    const isFallback = !!(ai as any)?.provider_fallback;
+    if (isFallback) fallbackCount++;
     cases.push({
       id: String(tx.id),
       expected: String(expected),
       predicted: String((ai as any)?.category ?? "otros"),
       merchant: tx.merchant ?? undefined,
       amount: tx.amount ?? undefined,
+      fallback: isFallback || undefined,
     });
+    if (args.sleep > 0 && i < evaluable.length - 1) await sleep(args.sleep);
   }
 
   const report = computeAccuracy(cases);
   const header = [
     `# Evaluación del clasificador`,
     ``,
-    `- Rango: ${args.from ?? "—"} → ${args.to ?? "—"} · API: ${args.api} · casos: ${cases.length}`,
+    `- Rango: ${args.from ?? "—"} → ${args.to ?? "—"} · API: ${args.api} · casos: ${cases.length} (evaluables: ${report.total} · no evaluables (fallback Groq): ${report.skippedFallback})`,
     `- Corregidas totales: ${corrected.length} · sin raw_event: ${skippedNoRaw.length} · sin categoría: ${skippedNoLabel.length} · fallback Groq→mock: ${fallbackCount}`,
     ``,
   ].join("\n");

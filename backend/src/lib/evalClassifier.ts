@@ -11,6 +11,8 @@ export type EvalCase = {
   predicted: string;
   merchant?: string;
   amount?: number;
+  /** true si la predicción vino de provider_fallback (no evaluable). */
+  fallback?: boolean;
 };
 
 export type PerCategoryStats = {
@@ -25,6 +27,8 @@ export type EvalReport = {
   incorrect: number;
   /** 0..1 (1 = todo correcto). 0 cuando no hay casos. */
   accuracy: number;
+  /** Casos excluidos por provider_fallback (no evaluables). */
+  skippedFallback: number;
   /** Clave = expected normalizado. */
   perCategory: Record<string, PerCategoryStats>;
   /** confusion[expected][predicted] = conteo. */
@@ -42,8 +46,10 @@ export function computeAccuracy(cases: EvalCase[]): EvalReport {
   const confusion: Record<string, Record<string, number>> = {};
   const failures: EvalCase[] = [];
   let correct = 0;
+  let skippedFallback = 0;
 
   for (const c of cases) {
+    if (c.fallback) { skippedFallback++; continue; }
     const expected = normalizeSlug(c.expected);
     const predicted = normalizeSlug(c.predicted);
     const hit = expected === predicted;
@@ -63,12 +69,13 @@ export function computeAccuracy(cases: EvalCase[]): EvalReport {
     stats.accuracy = stats.total > 0 ? stats.correct / stats.total : 0;
   }
 
-  const total = cases.length;
+  const total = cases.length - skippedFallback;
   return {
     total,
     correct,
     incorrect: total - correct,
     accuracy: total > 0 ? correct / total : 0,
+    skippedFallback,
     perCategory,
     confusion,
     failures,
@@ -87,6 +94,7 @@ export function toMarkdown(report: EvalReport, opts?: { title?: string }): strin
   lines.push("");
   lines.push(`- Casos: **${report.total}** · aciertos: **${report.correct}** · fallos: **${report.incorrect}**`);
   lines.push(`- Accuracy global: **${pct(report.accuracy)}**`);
+  lines.push(`- No evaluables (fallback Groq): **${report.skippedFallback ?? 0}**`);
   lines.push("");
   lines.push("## Por categoría (esperada)");
   lines.push("");

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeAccuracy } from "./evalClassifier.js";
+import { computeAccuracy, toMarkdown } from "./evalClassifier.js";
 
 describe("evalClassifier — agregador puro", () => {
   it("accuracy global con 3 casos sintéticos (2/3)", () => {
@@ -34,5 +34,22 @@ describe("evalClassifier — agregador puro", () => {
       { id: "tx-3", expected: "salud", predicted: "salud" },
     ]);
     expect(report.failures.map((f) => f.id)).toEqual(["tx-2"]);
+  });
+
+  it("ignora los marcados como fallback y los cuenta aparte", () => {
+    const report = computeAccuracy([
+      { id: "tx-1", expected: "alimentacion", predicted: "alimentacion" },
+      { id: "tx-2", expected: "transporte", predicted: "otros", fallback: true },
+      { id: "tx-3", expected: "transporte", predicted: "otros" },
+    ]);
+    expect(report.skippedFallback).toBe(1);
+    expect(report.total).toBe(2);
+    expect(report.correct).toBe(1);
+    expect(report.incorrect).toBe(1);
+    expect(report.accuracy).toBeCloseTo(1 / 2, 6);
+    expect(report.perCategory["transporte"]).toMatchObject({ total: 1, correct: 0 });
+    expect(report.confusion["transporte"]["otros"]).toBe(1);
+    const md = toMarkdown(report);
+    expect(md).toContain("No evaluables (fallback Groq): **1**");
   });
 });
