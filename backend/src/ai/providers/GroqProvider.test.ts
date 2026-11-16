@@ -83,4 +83,56 @@ describe("Phase 4 — AI Agent #1 (Groq) mock", () => {
     expect((out as any).provider_fallback).toMatch(/429/);
     expect(AgentOutputSchema.safeParse(out).success).toBe(true);
   });
+  it("tolerante: omite date/account_hint/installment => parsea sin fallback y conserva category", async () => {
+    (globalThis as any).fetch = async () => ({
+      ok: true, status: 200,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify({
+        is_transaction: true, transaction_type: "expense", direction: "out",
+        amount: 4990, currency: "CLP", merchant: "CINEMARK CHILE", counterparty: null,
+        category: "entretenimiento",
+        payment_method: "debit_card",
+        is_recurring_candidate: false, is_transfer_candidate: false,
+        confidence: 0.85, needs_review: false, reason: "Compra cine",
+      }) } }] }),
+    }) as any;
+    const p = new GroqProvider();
+    (p as any).apiKey = "test-key";
+    const out = await p.classify(baseInput as any);
+    expect((out as any).provider_fallback).toBeUndefined();
+    expect(out.category).toBe("entretenimiento");
+    expect(out.date).toBeNull();
+    expect(AgentOutputSchema.safeParse(out).success).toBe(true);
+  });
+  it("estricto: sin category o amount inválido => fallback", async () => {
+    // Sin category
+    (globalThis as any).fetch = async () => ({
+      ok: true, status: 200,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify({
+        is_transaction: true, transaction_type: "expense", direction: "out",
+        amount: 4990, currency: "CLP", merchant: "X", counterparty: null,
+        date: null, account_hint: null, payment_method: "debit_card", installment: null,
+        is_recurring_candidate: false, is_transfer_candidate: false,
+        confidence: 0.8, needs_review: false, reason: "sin categoria",
+      }) } }] }),
+    }) as any;
+    const p1 = new GroqProvider();
+    (p1 as any).apiKey = "test-key";
+    const out1 = await p1.classify(baseInput as any);
+    expect((out1 as any).provider_fallback).toBeDefined();
+    // Amount inválido
+    (globalThis as any).fetch = async () => ({
+      ok: true, status: 200,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify({
+        is_transaction: true, transaction_type: "expense", direction: "out",
+        amount: -5, currency: "CLP", merchant: "X", counterparty: null,
+        category: "otros", date: null, account_hint: null, payment_method: "debit_card", installment: null,
+        is_recurring_candidate: false, is_transfer_candidate: false,
+        confidence: 0.8, needs_review: false, reason: "monto malo",
+      }) } }] }),
+    }) as any;
+    const p2 = new GroqProvider();
+    (p2 as any).apiKey = "test-key";
+    const out2 = await p2.classify(baseInput as any);
+    expect((out2 as any).provider_fallback).toBeDefined();
+  });
 });
