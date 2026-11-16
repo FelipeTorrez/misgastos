@@ -28,6 +28,8 @@ export type EvalCacheEntry = {
 const store = new Map<string, EvalCacheEntry>();
 let hits = 0;
 let misses = 0;
+/** Entradas con fallback:true descartadas al leer (get/load). No se cachean. */
+let fallbackSkipped = 0;
 let lastPath = "";
 
 /** sha256 corto (12 hex) de prompt + modelo: cambia si cambia cualquiera. */
@@ -40,15 +42,26 @@ export function caseKey(rawEventId: string, model: string, phash: string): strin
   return `${rawEventId}::${model}::${phash}`;
 }
 
-/** Hit → entrada; miss → undefined. Cuenta para stats(). */
+/** Hit → entrada; miss → undefined. Cuenta para stats().
+ * Una entrada con `fallback: true` se trata como MISS (auto-saneo de
+ * archivos ya contaminados): se elimina del store y no se devuelve. */
 export function get(key: string): EvalCacheEntry | undefined {
   const e = store.get(key);
+  if (e && e.fallback) {
+    store.delete(key);
+    misses++;
+    fallbackSkipped++;
+    return undefined;
+  }
   if (e) hits++;
   else misses++;
   return e;
 }
 
+/** Guarda en el store. Las entradas con `fallback: true` NO se persisten
+ * (un caso no evaluable debe reintentarse, no congelarse en cache). */
 export function set(key: string, entry: EvalCacheEntry): void {
+  if (entry.fallback) return;
   store.set(key, entry);
 }
 
@@ -74,10 +87,14 @@ export function load(filePath: string): number {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return 0;
   let n = 0;
   for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-    if (isEntry(v)) {
-      store.set(k, v);
-      n++;
+    if (!isEntry(v)) continue;
+    // Auto-saneo: no cargar entradas contaminadas con fallback:true.
+    if (v.fallback) {
+      fallbackSkipped++;
+      continue;
     }
+    store.set(k, v);
+    n++;
   }
   return n;
 }
@@ -89,8 +106,8 @@ export function save(filePath: string = lastPath): void {
   fs.writeFileSync(filePath, JSON.stringify(Object.fromEntries(store), null, 2), "utf8");
 }
 
-export function stats(): { entries: number; hits: number; misses: number } {
-  return { entries: store.size, hits, misses };
+export function stats(): { entries: number; hits: number; misses: number; fallbackSkipped: number } {
+  return { entries: store.size, hits, misses, fallbackSkipped };
 }
 
 /** Vacía el store y resetea contadores (tests). */
@@ -98,6 +115,7 @@ export function clear(): void {
   store.clear();
   hits = 0;
   misses = 0;
+  fallbackSkipped = 0;
 }
 
 function isEntry(v: unknown): v is EvalCacheEntry {

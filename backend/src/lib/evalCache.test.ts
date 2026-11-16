@@ -82,4 +82,66 @@ describe("evalCache — unidad", () => {
     expect(load(bad)).toBe(0);
     expect(stats().entries).toBe(0);
   });
+
+  it("una entrada con fallback:true no se devuelve como hit (MISS)", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eval-cache-"));
+    const file = path.join(dir, "cache.json");
+    const realKey = caseKey("raw-ok", "model-a", "hash1");
+    const fbKey = caseKey("raw-fb", "model-a", "hash1");
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        [realKey]: entry({ predicted: "alimentacion" }),
+        [fbKey]: entry({ predicted: "otros", fallback: true }),
+      }),
+      "utf8",
+    );
+    // load auto-sanea: solo carga la entrada real
+    expect(load(file)).toBe(1);
+    expect(get(realKey)?.predicted).toBe("alimentacion");
+    expect(get(fbKey)).toBeUndefined();
+    expect(stats().hits).toBe(1);
+    expect(stats().misses).toBe(1);
+    expect(stats().fallbackSkipped).toBe(1);
+  });
+
+  it("set no persiste entradas con fallback:true (no quedan en el archivo)", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eval-cache-"));
+    const file = path.join(dir, "cache.json");
+    const fbKey = caseKey("raw-fb", "model-a", "hash1");
+    // Mismo patrón que scripts/eval-classifier.ts: solo cachear si NO es fallback
+    const isFallback = true;
+    if (!isFallback) set(fbKey, entry({ fallback: true }));
+    // Defensa en profundidad: set ignora fallback aunque se llame directo
+    set(fbKey, entry({ fallback: true }));
+    expect(get(fbKey)).toBeUndefined();
+    expect(stats().entries).toBe(0);
+    save(file);
+    const onDisk = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    expect(fbKey in onDisk).toBe(false);
+  });
+
+  it("save auto-sanea archivos ya contaminados y el markdown informa descartadas", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eval-cache-"));
+    const dirty = path.join(dir, "dirty.json");
+    const clean = path.join(dir, "clean.json");
+    const realKey = caseKey("raw-ok", "model-a", "hash1");
+    const fbKey = caseKey("raw-fb", "model-a", "hash1");
+    fs.writeFileSync(
+      dirty,
+      JSON.stringify({
+        [realKey]: entry({ predicted: "alimentacion" }),
+        [fbKey]: entry({ predicted: "otros", fallback: true }),
+      }),
+      "utf8",
+    );
+    expect(load(dirty)).toBe(1);
+    save(clean);
+    const onDisk = JSON.parse(fs.readFileSync(clean, "utf8")) as Record<string, unknown>;
+    expect(fbKey in onDisk).toBe(false);
+    expect(realKey in onDisk).toBe(true);
+    // Línea tal como la reporta scripts/eval-classifier.ts (cacheSkippedFallback)
+    const headerLine = `- Cache: desde cache: **${stats().hits}** · descartadas por fallback (cache): **${stats().fallbackSkipped}**`;
+    expect(headerLine).toContain("descartadas por fallback (cache): **1**");
+  });
 });
