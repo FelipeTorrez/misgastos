@@ -22,14 +22,12 @@ GRADLE_TRANSFORMS="$HOME/.gradle/caches/8.13/transforms"
 
 cd "$MOBILE_DIR/android"
 
-# --- 1. Limpiar transform corrupto si aparece el error de snapshot ---
-if grep -qs "not a regular file" "$MOBILE_DIR"/build-*.log 2>/dev/null; then
-  echo "→ limpiando transforms con hardlinks rotos (OneDrive)"
-  find "$GRADLE_TRANSFORMS" -maxdepth 1 -type d -newermt "-7 days" 2>/dev/null | while read -r d; do
-    [ "$d" = "$GRADLE_TRANSFORMS" ] && continue
-    rm -rf "$d"
-  done
-fi
+# --- 1. Build ---
+# NOTA: no limpiar ~/.gradle/caches/8.13/transforms automáticamente.
+# Una versión anterior de este script lo hacía al detectar "not a regular file"
+# en cualquier log viejo, y terminaba borrando caché EN USO y abortando el build
+# ("Device or resource busy" + set -e). Si Gradle queda inconsistente, hacerlo a mano:
+#   ./gradlew --stop && rm -rf ~/.gradle/caches/8.13/transforms
 
 ABI_FLAG="-PreactNativeArchitectures=arm64-v8a"
 
