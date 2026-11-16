@@ -169,7 +169,7 @@ export function Movimientos({ txs, cats, month, filterCategory, onClearFilter, o
                   <Text style={s.merchant} numberOfLines={1} ellipsizeMode="tail">{toTitleCase(item.merchant)}</Text>
                 </View>
                 <View style={s.metaRow}>
-                  {item.status !== "confirmed" && <StatusBadge status={item.status} />}
+                  {(item.status === "pending_review" || item.status === "pending_ai") && <StatusBadge status={item.status} />}
                   <ClassificationChip tx={item} />
                   <Text style={s.meta} numberOfLines={1} ellipsizeMode="tail">{(item.counterparty ? `Recibido de ${item.counterparty}` : (cats.find(c => c.id === item.category_id)?.label ?? (item.type === "income" ? "Ingreso" : item.type === "transfer" ? "Transferencia" : "Sin categoría")))} · {shortDate(item.date)}</Text>
                 </View>
