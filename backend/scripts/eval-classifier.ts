@@ -26,6 +26,7 @@ import {
   set as evalCacheSet,
   load as evalCacheLoad,
   save as evalCacheSave,
+  stats as evalCacheStats,
   promptHash as evalPromptHash,
 } from "../src/lib/evalCache.js";
 
@@ -245,9 +246,9 @@ async function main() {
     const hit = useCache ? evalCacheGet(key) : undefined;
     let predicted: string;
     let isFallback: boolean;
-    if (hit) {
+    if (hit && !hit.fallback) {
       predicted = hit.predicted;
-      isFallback = hit.fallback;
+      isFallback = false;
       cacheHits++;
     } else {
       const p = parseEmail(text);
@@ -275,7 +276,9 @@ async function main() {
       isFallback = !!(ai as any)?.provider_fallback;
       predicted = String((ai as any)?.category ?? "otros");
       modelCalls++;
-      if (useCache) {
+      // Solo se cachean clasificaciones reales del modelo: un fallback
+      // (429/cuota) debe reintentarse en la próxima corrida, no congelarse.
+      if (useCache && !isFallback) {
         evalCacheSet(key, {
           predicted,
           category_expected: expectedStr,
@@ -301,11 +304,14 @@ async function main() {
   if (useCache) evalCacheSave(cacheFile);
 
   const report = computeAccuracy(cases);
+  // Entradas con fallback:true descartadas al leer (get/load): no cuentan
+  // como hits y se reintentan contra el modelo cuando la cuota se libera.
+  const cacheSkippedFallback = useCache ? evalCacheStats().fallbackSkipped : 0;
   const header = [
     `# Evaluación del clasificador`,
     ``,
     `- Modelo: **${model}** · reglas usuario: **${userRules.length}**`,
-    `- Cache: desde cache: **${cacheHits}** · llamadas al modelo: **${modelCalls}**${useCache ? ` · archivo: ${cacheFile}` : " (desactivada con --no-cache)"}`,
+    `- Cache: desde cache: **${cacheHits}** · llamadas al modelo: **${modelCalls}** · descartadas por fallback (cache): **${cacheSkippedFallback}**${useCache ? ` · archivo: ${cacheFile}` : " (desactivada con --no-cache)"}`,
     `- Rango: ${args.from ?? "—"} → ${args.to ?? "—"} · API: ${args.api} · casos: ${cases.length} (evaluables: ${report.total} · no evaluables (fallback Groq): ${report.skippedFallback})`,
     `- Corregidas totales: ${corrected.length} · sin raw_event: ${skippedNoRaw.length} · sin categoría: ${skippedNoLabel.length} · fallback Groq→mock: ${fallbackCount}`,
     ``,
