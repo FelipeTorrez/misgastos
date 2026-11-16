@@ -3,9 +3,14 @@ import { FINAN_SYSTEM_PROMPT, inferDirection } from "../prompts/agente-financier
 
 // Groq via OpenAI-compatible API con structured outputs (JSON Schema)
 // Docs: https://console.groq.com/docs/text-chat#json-mode
+// NOTA: el modelo debe existir y estar vigente en la cuenta de Groq.
+// Verificar con: GET https://api.groq.com/openai/v1/models (con GROQ_API_KEY).
+// Si el modelo fue decomisionado, la API responde 400 y el provider cae a mock
+// con provider_fallback visible (ver manejo 'decommissioned' abajo).
+export const DEFAULT_GROQ_MODEL = "qwen/qwen3-32b";
 export class GroqProvider {
   private apiKey = process.env.GROQ_API_KEY ?? "";
-  private model = process.env.GROQ_MODEL ?? "llama-3.1-70b-versatile";
+  private model = process.env.GROQ_MODEL ?? DEFAULT_GROQ_MODEL;
 
   async classify(input: AgentInput): Promise<AgentOutput> {
     if (!this.apiKey) return this.mock(input, "no_api_key");
@@ -55,7 +60,13 @@ export class GroqProvider {
         await new Promise((r) => setTimeout(r, delayMs));
         res = await doFetch();
       }
-      if (!res.ok) throw new Error(`groq ${res.status} ${await res.text().then(t=>t.slice(0,300))}`);
+      if (!res.ok) {
+        const rawBody = await res.text().then((t) => t.slice(0, 300));
+        if (rawBody.toLowerCase().includes("decommissioned")) {
+          throw new Error(`groq model decommissioned (model=${this.model}): ${rawBody}`);
+        }
+        throw new Error(`groq ${res.status} ${rawBody}`);
+      }
       const j: any = await res.json();
       const content = j.choices?.[0]?.message?.content ?? "{}";
       const parsed = JSON.parse(content);
