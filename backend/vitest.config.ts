@@ -9,5 +9,7 @@ export default defineConfig({
     hookTimeout: 20000,
     // Sin paralelismo entre archivos que tocan el mockStore en disco.
     fileParallelism: false,
+    // Quita GROQ_API_KEY del entorno: la suite nunca debe pegarle al LLM real.
+    setupFiles: ["./tests/setup.env.ts"],
   },
 });
