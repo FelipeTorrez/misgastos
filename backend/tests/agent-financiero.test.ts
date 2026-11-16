@@ -30,7 +30,10 @@ import app from "../src/index.js";
 import { GroqProvider } from "../src/ai/providers/GroqProvider.js";
 import { FINAN_SYSTEM_PROMPT, inferDirection } from "../src/ai/prompts/agente-financiero.js";
 
-beforeEach(()=> reset());
+// Sin API key el clasificador usa el fallback visible (determinístico, sin red)
+delete (process.env as any).GROQ_API_KEY;
+
+beforeEach(()=>{ reset(); delete (process.env as any).GROQ_API_KEY; });
 
 describe("SDD Agente Financiero — Finan (direction + veredicto)", ()=>{
   describe("inferDirection unit", ()=>{
@@ -207,7 +210,7 @@ describe("SDD Agente Financiero — Finan (direction + veredicto)", ()=>{
       expect(j.transaction.type).toBe("income");
       expect(j.ai.direction).toBe("in");
       expect(j.ai.reason).toContain("ingreso");
-      expect(j.classification_source).toBe("ai");
+      expect(j.classification_source).toBe("fallback");
     });
 
     it("Transferiste $30.000 a María → expense out", async ()=>{

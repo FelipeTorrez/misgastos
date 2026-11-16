@@ -26,20 +26,35 @@ export class GroqProvider {
     });
 
     // Intentar Groq con response_format json_object + validar con Zod
-    try {
-      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const body = {
+      model: this.model,
+      temperature: 0,
+      max_tokens: 400,
+      response_format: { type: "json_object" },
+        messages: [
+        { role: "system", content: system },
+        { role: "user", content: user + "\n\nResponde SOLO con JSON válido según: {is_transaction, transaction_type, direction, amount, currency, merchant, counterparty, category, date, account_hint, payment_method, installment, is_recurring_candidate, is_transfer_candidate, confidence, needs_review, reason}" }
+      ],
+    };
+    const doFetch = () =>
+      fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.apiKey}` },
-        body: JSON.stringify({
-          model: this.model,
-          temperature: 0,
-          response_format: { type: "json_object" },
-            messages: [
-            { role: "system", content: system },
-            { role: "user", content: user + "\n\nResponde SOLO con JSON válido según: {is_transaction, transaction_type, direction, amount, currency, merchant, counterparty, category, date, account_hint, payment_method, installment, is_recurring_candidate, is_transfer_candidate, confidence, needs_review, reason}" }
-          ],
-        }),
+        body: JSON.stringify(body),
       });
+    try {
+      let res = await doFetch();
+      if (res.status === 429) {
+        const raw = (res.headers as any)?.get?.("retry-after");
+        const maxDelay = process.env.NODE_ENV === "test" ? 20 : 5000;
+        let delayMs = Math.min(1000, maxDelay);
+        if (raw != null) {
+          const secs = parseFloat(String(raw));
+          if (!Number.isNaN(secs)) delayMs = Math.min(Math.max(secs * 1000, 0), maxDelay);
+        }
+        await new Promise((r) => setTimeout(r, delayMs));
+        res = await doFetch();
+      }
       if (!res.ok) throw new Error(`groq ${res.status} ${await res.text().then(t=>t.slice(0,300))}`);
       const j: any = await res.json();
       const content = j.choices?.[0]?.message?.content ?? "{}";
@@ -49,8 +64,10 @@ export class GroqProvider {
       if (!validated.success) throw new Error("zod: " + JSON.stringify(validated.error.flatten()));
       return validated.data;
     } catch (e: any) {
-      // Fallback mock con razón
-      return this.mock(input, e.message?.slice(0, 120) ?? "groq_error");
+      // Fallback mock visible con razón
+      const msg = e?.message ?? "groq_error";
+      const reason = msg.includes("429") ? "429" : msg.slice(0, 120) || "groq_error";
+      return this.mock(input, msg.includes("429") ? "429" : `groq_error:${reason}`);
     }
   }
 
@@ -80,6 +97,7 @@ export class GroqProvider {
         confidence: 0.95,
         needs_review: false,
         reason: "Mensaje promocional o informativo, no hay consumo",
+        provider_fallback: fallbackReason,
       };
     }
     const amount = input.parser_hints.amount ?? 0;
@@ -174,6 +192,7 @@ export class GroqProvider {
       confidence: needs_review ? 0.5 : 0.88,
       needs_review,
       reason: verdictReason.slice(0, 200),
+      provider_fallback: fallbackReason,
     };
   }
 
