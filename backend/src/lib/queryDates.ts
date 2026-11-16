@@ -59,3 +59,16 @@ export const TransactionsQuery = z
     limit: z.coerce.number().int().min(1).max(500).optional(),
   })
   .refine(rangeOk, rangeRefine);
+
+const BudgetMonthQuery = z.union([
+  MonthQuery,
+  z.string().regex(/^\d{4}-(0[1-9]|1[0-2])-01$/, "month debe ser YYYY-MM o YYYY-MM-01 válido"),
+]);
+
+export const BudgetsQuery = z
+  .object({
+    month: BudgetMonthQuery.optional(),
+    from: DateQuery.optional(),
+    to: DateQuery.optional(),
+  })
+  .refine(rangeOk, rangeRefine);

@@ -2,7 +2,8 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { supabase, getUserId, isMockMode } from "../../lib/supabase.js";
 import { mockStore } from "../../lib/mockStore.js";
-import { monthBounds, monthOverlaps } from "../../lib/dateRange.js";
+import { monthBounds, monthOverlaps, currentMonthLocal } from "../../lib/dateRange.js";
+import { BudgetsQuery } from "../../lib/queryDates.js";
 
 const CreateBudget = z.object({
   category_id: z.string().uuid().nullable(), // null = global
@@ -13,16 +14,20 @@ const CreateBudget = z.object({
 
 export async function budgetRoutes(app: FastifyInstance) {
   // Lista presupuestos del mes (o de un rango prorrateado) con spent calculado
-  app.get("/v1/budgets", async (req: any) => {
+  app.get("/v1/budgets", async (req: any, reply: any) => {
+    const parsed = BudgetsQuery.safeParse(req.query ?? {});
+    if (!parsed.success) return reply.status(400).send(parsed.error.flatten());
     const userId = getUserId(req);
-    const month = req.query?.month ?? new Date().toISOString().slice(0,7) + "-01";
-    const from = req.query?.from;   // YYYY-MM-DD (inclusive)
-    const to = req.query?.to;       // YYYY-MM-DD (inclusive)
-    const isRange = Boolean(from && to);
+    // Acepta 'YYYY-MM' y 'YYYY-MM-01'; normaliza a 'YYYY-MM-01'.
+    // Sin month/from/to: default al mes en curso (reloj local, no UTC).
+    const rawMonth = parsed.data.month;
+    const month = rawMonth ? `${rawMonth.slice(0, 7)}-01` : `${currentMonthLocal()}-01`;
+    const from = parsed.data.from;
+    const to = parsed.data.to;
 
     let budgets: any[], txs: any[];
 
-    if (isRange) {
+    if (from && to) {
       const overlaps = monthOverlaps(from, to);
       const budgetByCat = new Map<string, number>();
       let globalAmount = 0;
