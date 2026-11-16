@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import Fastify from "fastify";
 
 const { db } = vi.hoisted(() => {
-  return { db: { transactions: [] as any[], error: null as any } };
+  return { db: { transactions: [] as any[], raw_events: [] as any[], error: null as any } };
 });
 
 function makeTable(tables: any, tname: string) {
@@ -53,6 +53,7 @@ import { transactionRoutes } from "./routes.js";
 
 beforeEach(() => {
   db.transactions.length = 0;
+  db.raw_events.length = 0;
   db.error = null;
 });
 
@@ -77,6 +78,55 @@ describe("GET /v1/transactions?month — fin de mes", () => {
     const app = Fastify();
     await app.register(transactionRoutes);
     const res = await app.inject({ method: "GET", url: "/v1/transactions?month=2026-03" });
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toMatchObject({ error: "db down", code: "db_unavailable" });
+  });
+});
+
+describe("GET /v1/transactions/:id — correo original", () => {
+  async function buildApp() {
+    const app = Fastify();
+    await app.register(transactionRoutes);
+    return app;
+  }
+
+  it("devuelve transacción + raw_event resumido", async () => {
+    db.transactions = [
+      { id: "t1", user_id: "u1", date: "2026-03-10", amount: 1000, type: "expense", merchant: "Lider", status: "confirmed", raw_event_id: "re1" },
+    ];
+    db.raw_events = [
+      { id: "re1", user_id: "u1", source: "gmail", sender: "santander@notificaciones.cl", subject: "Compra realizada", received_at: "2026-03-10T15:30:00Z", raw_content: "Compra por $1.000 en Lider" },
+    ];
+    const app = await buildApp();
+    const res = await app.inject({ method: "GET", url: "/v1/transactions/t1" });
+    expect(res.statusCode).toBe(200);
+    const j = res.json();
+    expect(j.id).toBe("t1");
+    expect(j.raw_event).toMatchObject({ id: "re1", source: "gmail", sender: "santander@notificaciones.cl", subject: "Compra realizada", raw_content: "Compra por $1.000 en Lider" });
+    expect(j.raw_event.received_at).toBe("2026-03-10T15:30:00Z");
+  });
+
+  it("raw_event null si la tx no tiene raw_event_id", async () => {
+    db.transactions = [
+      { id: "t2", user_id: "u1", date: "2026-03-10", amount: 500, type: "expense", merchant: "Manual", status: "confirmed" },
+    ];
+    const app = await buildApp();
+    const res = await app.inject({ method: "GET", url: "/v1/transactions/t2" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().raw_event).toBeNull();
+  });
+
+  it("id inexistente → 404", async () => {
+    const app = await buildApp();
+    const res = await app.inject({ method: "GET", url: "/v1/transactions/nope" });
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({ error: "transaction not found" });
+  });
+
+  it("Supabase caído → 503 con code db_unavailable", async () => {
+    db.error = { message: "db down" };
+    const app = await buildApp();
+    const res = await app.inject({ method: "GET", url: "/v1/transactions/t1" });
     expect(res.statusCode).toBe(503);
     expect(res.json()).toMatchObject({ error: "db down", code: "db_unavailable" });
   });
