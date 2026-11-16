@@ -107,6 +107,37 @@ export function normalizeMerchant(input: string | null | undefined): string {
 type RuleLike = { merchant_normalized: string };
 
 /**
+ * Procesadores de pago: el texto del banco trae al procesador, no al
+ * comercio real, así que ninguna IA puede acertar la categoría. La ingesta
+ * manda estos casos a cola de revisión en vez de aceptar la categoría
+ * inventada (metadata.review_reason = 'payment_processor').
+ */
+export const PAYMENT_PROCESSORS = [
+  "merpago",
+  "payu",
+  "redgloba",
+  "mach",
+  "webpay",
+  "transbank",
+  "khipu",
+  "flow",
+];
+
+/**
+ * true si el merchant (crudo o ya normalizado) es un procesador de pagos.
+ * Match por token exacto; prefijo solo para nombres largos (>4), para no
+ * confundir "mach"/"flow"/"payu" con palabras que los contienen.
+ */
+export function isPaymentProcessor(merchantRaw: string | null | undefined): boolean {
+  const norm = normalizeMerchant(merchantRaw);
+  if (!norm) return false;
+  const words = norm.split(" ");
+  return PAYMENT_PROCESSORS.some((p) =>
+    words.some((w) => w === p || (p.length > 4 && w.startsWith(p))),
+  );
+}
+
+/**
  * Segundo intento de match cuando no hay igualdad exacta: el merchant
  * empieza con o contiene la regla. Solo reglas de >=6 caracteres y se
  * devuelve el match más largo (evita falsos positivos de 3 letras).
