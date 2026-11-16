@@ -41,7 +41,6 @@ vi.mock("../../lib/supabase.js", () => ({
 }));
 
 import { budgetRoutes } from "./routes.js";
-import { currentMonthLocal } from "../../lib/dateRange.js";
 
 beforeEach(() => {
   db.transactions.length = 0;
@@ -71,18 +70,25 @@ describe("GET /v1/budgets — validación month/from/to", () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it("sin params → usa el mes local", async () => {
-    const localMonth = `${currentMonthLocal()}-01`;
-    db.budgets = [
-      { id: "b1", user_id: "u1", category_id: null, amount: 100000, month: localMonth },
-    ];
-    const app = Fastify();
-    await app.register(budgetRoutes);
-    const res = await app.inject({ method: "GET", url: "/v1/budgets" });
-    expect(res.statusCode).toBe(200);
-    const body = res.json();
-    expect(body).toHaveLength(1);
-    expect(body[0]).toMatchObject({ id: "b1", month: localMonth });
+  it("sin params → usa el mes civil de Santiago aunque el proceso corra en UTC", async () => {
+    process.env.TZ = "UTC";
+    vi.useFakeTimers();
+    try {
+      // 2026-12-01T02:30Z = 30-nov 23:30 en Santiago → mes esperado 2026-11.
+      vi.setSystemTime(new Date("2026-12-01T02:30:00Z"));
+      db.budgets = [
+        { id: "b1", user_id: "u1", category_id: null, amount: 100000, month: "2026-11-01" },
+      ];
+      const app = Fastify();
+      await app.register(budgetRoutes);
+      const res = await app.inject({ method: "GET", url: "/v1/budgets" });
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body).toHaveLength(1);
+      expect(body[0]).toMatchObject({ id: "b1", month: "2026-11-01" });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("?month=2026-11 devuelve lo mismo que ?month=2026-11-01", async () => {

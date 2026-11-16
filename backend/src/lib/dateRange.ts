@@ -71,10 +71,22 @@ export function monthBounds(month: string): { start: string; endExcl: string } {
 }
 
 /**
- * Mes en curso "YYYY-MM" según el reloj LOCAL (no UTC).
- * No usar toISOString(): en Chile, a las 21:00 del último día del mes
- * ya devuelve el mes siguiente.
+ * Mes en curso "YYYY-MM" en la zona horaria de la app (America/Santiago),
+ * independiente del TZ del proceso.
+ * NO usar getFullYear()/getMonth() ni toISOString(): dependen del TZ del
+ * proceso y Railway corre en UTC. Con TZ=UTC, el instante 2026-12-01T02:30Z
+ * (= 30-nov 23:30 en Chile) devolvía '2026-12' en vez de '2026-11'.
  */
-export function currentMonthLocal(now: Date = new Date()): string {
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+export function currentMonthLocal(
+  now: Date = new Date(),
+  tz: string = process.env.APP_TZ ?? "America/Santiago",
+): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(now);
+  const year = parts.find((p) => p.type === "year")?.value;
+  const month = parts.find((p) => p.type === "month")?.value;
+  return `${year}-${month}`;
 }
