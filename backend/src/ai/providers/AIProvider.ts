@@ -6,20 +6,20 @@ export const AgentOutputSchema = z.object({
   direction: z.enum(["in","out","internal","none"]).default("out"),
   amount: z.number().int().nonnegative(),
   currency: z.string().default("CLP"),
-  merchant: z.string(),
+  merchant: z.string().default("Desconocido"),
   counterparty: z.string().nullable().default(null),
   category: z.string(),
-  date: z.string(), // YYYY-MM-DD
-  account_hint: z.string().nullable(),
+  date: z.string().nullable().default(null), // YYYY-MM-DD
+  account_hint: z.string().nullable().default(null),
   payment_method: z.enum(["debit_card","credit_card","transfer","cash","unknown"]),
   installment: z.object({
     number: z.number().int(), total: z.number().int(), original_amount: z.number().int()
-  }).nullable(),
-  is_recurring_candidate: z.boolean(),
-  is_transfer_candidate: z.boolean(),
-  confidence: z.number().min(0).max(1),
-  needs_review: z.boolean(),
-  reason: z.string().nullable(),
+  }).nullable().default(null),
+  is_recurring_candidate: z.boolean().default(false),
+  is_transfer_candidate: z.boolean().default(false),
+  confidence: z.number().min(0).max(1).default(0.5),
+  needs_review: z.boolean().default(true),
+  reason: z.string().nullable().default(null),
   provider_fallback: z.string().optional()
 });
 

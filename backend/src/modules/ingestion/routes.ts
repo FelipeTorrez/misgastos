@@ -209,7 +209,7 @@ async function processIngestion(data: any, userId: string) {
   // Dedup §15 — solo si hay transacción real y monto
   let dedupFound: any = null;
   if (p.amount !== null) {
-    const effectiveDate = p.date ?? new Date().toISOString().slice(0, 10);
+    const effectiveDate = (ai as any)?.date ?? p.date ?? new Date().toISOString().slice(0, 10);
     const type = (ai?.transaction_type as any) ?? (finalDirection === "in" ? "income" : finalDirection === "internal" ? "transfer" : p.operation === "transfer" ? "transfer" : "expense");
     if (type !== "none") {
       const candidate = { amount: p.amount, date: effectiveDate, time: p.time, merchant: finalMerchant, type };
@@ -251,7 +251,7 @@ async function processIngestion(data: any, userId: string) {
       category_id: finalCategoryId,
       direction, counterparty: finalCounterparty ?? ai?.counterparty ?? null,
       payment_method: paymentMethod,
-      date: p.date ? `${p.date}T${p.time ?? "12:00"}:00Z` : new Date().toISOString(),
+      date: ((ai as any)?.date ?? p.date) ? `${((ai as any)?.date ?? p.date) as string}T${p.time ?? "12:00"}:00Z` : new Date().toISOString(),
       status, confidence: aiConfidence,
       is_recurring_candidate: ai?.is_recurring_candidate ?? false, duplicate_of: duplicateOf,
       source: classificationSource,
