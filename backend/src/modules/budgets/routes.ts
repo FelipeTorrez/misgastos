@@ -53,40 +53,39 @@ export async function budgetRoutes(app: FastifyInstance) {
         rangeTxs = ((ts ?? []) as any[]).filter(t => t.status !== "duplicate" && t.status !== "ignored");
       }
 
-      if (cycleBs.length > 0) {
-        const byCat: Record<string, number> = {};
-        let globalSpent = 0;
-        for (const t of rangeTxs) {
-          globalSpent += t.amount;
-          if (t.category_id) byCat[t.category_id] = (byCat[t.category_id] ?? 0) + t.amount;
-        }
-        const seen = new Set<string>();
-        let seenGlobal = false;
-        return cycleBs
-          .filter((b: any) => {
-            if (b.category_id) {
-              if (seen.has(b.category_id)) return false;
-              seen.add(b.category_id);
-              return true;
-            }
-            if (seenGlobal) return false;
-            seenGlobal = true;
-            return true;
-          })
-          .map((b: any) => {
-            const spent = b.category_id ? (byCat[b.category_id] ?? 0) : globalSpent;
-            return {
-              ...b,
-              spent,
-              remaining: b.amount - spent,
-              pct: Math.round((spent / b.amount) * 100),
-              month: from,
-              period: "cycle",
-              partial: false,
-              range: { from, to },
-            };
-          });
+      // Items de ciclo: amount sin prorratear, spent del rango completo.
+      const byCatCycle: Record<string, number> = {};
+      let globalSpentCycle = 0;
+      for (const t of rangeTxs) {
+        globalSpentCycle += t.amount;
+        if (t.category_id) byCatCycle[t.category_id] = (byCatCycle[t.category_id] ?? 0) + t.amount;
       }
+      const seenCycle = new Set<string>();
+      let seenGlobalCycle = false;
+      const cycleItems = cycleBs
+        .filter((b: any) => {
+          if (b.category_id) {
+            if (seenCycle.has(b.category_id)) return false;
+            seenCycle.add(b.category_id);
+            return true;
+          }
+          if (seenGlobalCycle) return false;
+          seenGlobalCycle = true;
+          return true;
+        })
+        .map((b: any) => {
+          const spent = b.category_id ? (byCatCycle[b.category_id] ?? 0) : globalSpentCycle;
+          return {
+            ...b,
+            spent,
+            remaining: b.amount - spent,
+            pct: Math.round((spent / b.amount) * 100),
+            month: from,
+            period: "cycle",
+            partial: false,
+            range: { from, to },
+          };
+        });
 
       // Fallback: prorrateo de mensuales, con spent SOLO del tramo cubierto
       // (tramos = solape de cada mes con presupuesto; partial=true si falta algún tramo).
@@ -144,9 +143,11 @@ export async function budgetRoutes(app: FastifyInstance) {
         for (const m of coveredMonths) coveredDays += overlapDaysByMonth.get(m) ?? 0;
         const partial = coveredDays < totalDays;
         if (b.category_id) {
+          if (seenCycle.has(b.category_id)) continue;
           if (seen.has(b.category_id)) continue;
           seen.add(b.category_id);
         } else {
+          if (seenGlobalCycle) continue;
           if (seenGlobal) continue;
           seenGlobal = true;
         }
@@ -166,7 +167,7 @@ export async function budgetRoutes(app: FastifyInstance) {
           effective: b.category_id ? true : (globalAmount > 0),
         });
       }
-      return merged;
+      return [...cycleItems, ...merged];
     }
 
     if (isMockMode) {
