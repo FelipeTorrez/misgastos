@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { C } from "../../theme/tokens";
-import { fmtCLP } from "../../lib/format";
+import { fmtCLP, deltaPct } from "../../lib/format";
 import { CategoryCircle } from "./CategoryCircle";
 import { MIcon } from "./MIcon";
 
@@ -8,19 +8,27 @@ import { MIcon } from "./MIcon";
  * Hero fijo del shell: Total Gastos protagonista + Ingresos y Balance a la derecha
  * (Balance destacado, con más aire). Chip de filtro debajo.
  */
-export function BalanceHero({ income, expense, balance, filterCategory, onClearFilter }: {
+export function BalanceHero({ income, expense, balance, prevExpense, prevLabel, filterCategory, onClearFilter }: {
   income: number;
   expense: number;
   balance: number;
+  prevExpense?: number | null;
+  prevLabel?: string | null;
   filterCategory?: { id: string; label: string; slug: string } | null;
   onClearFilter?: () => void;
 }) {
+  const delta = prevExpense != null ? deltaPct(expense, prevExpense) : null;
   return (
     <View style={s.wrap}>
       <View style={s.row}>
         <View style={{ flex: 1, paddingRight: 12 }}>
           <Text style={s.label}>Total Gastos</Text>
           <Text style={s.big}>{fmtCLP(expense)}</Text>
+          {delta != null && (
+            <Text style={[s.delta, { color: delta > 0 ? C.warning : delta < 0 ? C.positive : C.dim }]}>
+              {delta > 0 ? "▲" : delta < 0 ? "▼" : "•"} {Math.abs(delta)}% vs {prevLabel ?? "periodo anterior"}
+            </Text>
+          )}
         </View>
         <View style={s.right}>
           <View style={s.stat}>
@@ -52,6 +60,7 @@ const s = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "flex-end" },
   label: { color: C.dim, fontSize: 12, fontWeight: "700", letterSpacing: 0.4, textTransform: "uppercase" },
   big: { color: C.text, fontSize: 38, fontWeight: "800", letterSpacing: -0.5, marginTop: 4 },
+  delta: { fontSize: 13, fontWeight: "700", marginTop: 4 },
   right: { alignItems: "flex-end", gap: 14 },
   stat: { alignItems: "flex-end", gap: 2 },
   statLabel: { color: C.dim, fontSize: 11, fontWeight: "600", letterSpacing: 0.4, textTransform: "uppercase" },
