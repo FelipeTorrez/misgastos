@@ -149,7 +149,7 @@ export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive, rang
           </TouchableOpacity>
       </View>
 
-      <Text style={s.hint}>{rangeActive ? "Define límites por ciclo con Configurar" : "Desliza para borrar · Toca para editar"}</Text>
+      <Text style={s.hint}>Desliza para borrar · Toca para editar</Text>
 
       {rows.length === 0 ? (
         <View style={s.empty}>
@@ -193,14 +193,14 @@ export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive, rang
             const slug = b.categories?.slug ?? cat?.slug;
             const name = b.categories?.name ?? cat?.label ?? "Categoría";
             const content = (
-              <Pressable style={({ pressed }) => [s.row, pressed && !rangeActive && { opacity: 0.7 }]} onPress={() => !rangeActive && editBudget(b)}>
+              <Pressable style={({ pressed }) => [s.row, pressed && { opacity: 0.7 }]} onPress={() => editBudget(b)}>
                 <CategoryCircle slug={slug} size={40} />
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <View style={s.rowHead}>
                     <Text style={s.name}>{name}</Text>
                     <Text style={s.spent}>{fmtCLP(b.spent)}</Text>
                   </View>
-                  <Text style={s.limit}>de {fmtCLP(b.amount)}{cycleN > 0 ? ` en ${cycleN} días (≈${fmtCLP(Math.round(b.amount / cycleN))}/día)` : ""}</Text>
+                  <Text style={s.limit}>de {fmtCLP(b.amount)}{b.period === "cycle" ? " · Ciclo" : ""}{b.partial && b.coveredDays != null && b.totalDays != null ? ` · ${b.coveredDays} de ${b.totalDays} días` : ""}{cycleN > 0 ? ` en ${cycleN} días (≈${fmtCLP(Math.round(b.amount / cycleN))}/día)` : ""}</Text>
                   <View style={{ marginTop: 8 }}>
                     <Progress pct={b.pct ?? 0} height={7} />
                   </View>
@@ -208,7 +208,6 @@ export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive, rang
                 <MIcon name="chevron-right" size={18} color={C.faint} />
               </Pressable>
             );
-            if (rangeActive) return <View key={b.id} style={s.swipeStatic}>{content}</View>;
             return <SwipeRow key={b.id} onDelete={() => deleteBudget(b)}>{content}</SwipeRow>;
           })}
         </View>

@@ -33,12 +33,25 @@ function makeTable(tables: any, tname: string) {
       return { select: (_c: string) => ({ single: () => ({ data: r, error: null }) }) };
     },
     update: (patch: any) => { state.patch = patch; return b; },
+    delete: () => { state.deleting = true; return b; },
     single: () => {
       const rows = apply();
       if (state.patch) for (const r of rows) Object.assign(r, state.patch);
       return { data: rows[0] ?? null, error: null };
     },
-    then: (cb: any) => cb(db.error ? { data: null, error: db.error } : { data: apply(), error: null }),
+    then: (cb: any) => {
+      if (db.error) return cb({ data: null, error: db.error });
+      if (state.deleting) {
+        const rows = apply();
+        const arr = tables[tname] ?? [];
+        for (const r of rows) {
+          const i = arr.indexOf(r);
+          if (i >= 0) arr.splice(i, 1);
+        }
+        return cb({ data: null, error: null });
+      }
+      return cb({ data: apply(), error: null });
+    },
   };
   return b;
 }
@@ -208,5 +221,63 @@ describe("GET /v1/budgets from/to — presupuestos por ciclo (period='cycle')", 
     const get = await app.inject({ method: "GET", url: "/v1/budgets?from=2026-10-20&to=2026-11-19" });
     expect(get.json()).toHaveLength(1);
     expect(get.json()[0].amount).toBe(70000);
+  });
+});
+
+describe("GET /v1/budgets from/to — merge ciclo + mensuales", () => {
+  it("(e) cycle cat-A + monthly cat-B => 2 items, A sin prorratear period=cycle, B prorrateado partial", async () => {
+    db.budgets = [
+      { id: "b1", user_id: "u1", category_id: "cat-A", amount: 70000, month: "2026-10-20", period: "cycle" },
+      { id: "b2", user_id: "u1", category_id: "cat-B", amount: 31000, month: "2026-10-01", period: "monthly" },
+    ];
+    db.transactions = [];
+    const app = Fastify();
+    await app.register(budgetRoutes);
+    const res = await app.inject({ method: "GET", url: "/v1/budgets?from=2026-10-20&to=2026-11-19" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toHaveLength(2);
+    const a = body.find((x: any) => x.category_id === "cat-A");
+    const b = body.find((x: any) => x.category_id === "cat-B");
+    expect(a.amount).toBe(70000);
+    expect(a.period).toBe("cycle");
+    expect(a.partial).toBe(false);
+    expect(b.amount).toBe(Math.round(31000 * 12 / 31));
+    expect(b.period).toBe("monthly");
+    expect(b.partial).toBe(true);
+    expect(b.coveredDays).toBe(12);
+    expect(b.totalDays).toBe(31);
+  });
+
+  it("(f) misma categoria con cycle y monthly => 1 solo item y es el de ciclo", async () => {
+    db.budgets = [
+      { id: "b1", user_id: "u1", category_id: "cat-A", amount: 70000, month: "2026-10-20", period: "cycle" },
+      { id: "b2", user_id: "u1", category_id: "cat-A", amount: 31000, month: "2026-10-01", period: "monthly" },
+    ];
+    db.transactions = [];
+    const app = Fastify();
+    await app.register(budgetRoutes);
+    const res = await app.inject({ method: "GET", url: "/v1/budgets?from=2026-10-20&to=2026-11-19" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toHaveLength(1);
+    expect(body[0].period).toBe("cycle");
+    expect(body[0].amount).toBe(70000);
+    expect(body[0].category_id).toBe("cat-A");
+  });
+
+  it("(g) DELETE /v1/budgets/:id borra un budget de ciclo", async () => {
+    db.budgets = [
+      { id: "b1", user_id: "u1", category_id: "cat-A", amount: 70000, month: "2026-10-20", period: "cycle" },
+    ];
+    const app = Fastify();
+    await app.register(budgetRoutes);
+    const before = await app.inject({ method: "GET", url: "/v1/budgets?from=2026-10-20&to=2026-11-19" });
+    expect(before.json()).toHaveLength(1);
+    const del = await app.inject({ method: "DELETE", url: "/v1/budgets/b1" });
+    expect(del.statusCode).toBe(200);
+    expect(del.json()).toEqual({ ok: true });
+    const after = await app.inject({ method: "GET", url: "/v1/budgets?from=2026-10-20&to=2026-11-19" });
+    expect(after.json()).toHaveLength(0);
   });
 });
