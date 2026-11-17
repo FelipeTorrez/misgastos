@@ -58,7 +58,7 @@ export default function App() {
   const [addType, setAddType] = useState<"expense" | "income">("expense");
   const [filterCategory, setFilterCategory] = useState<{ id: string; label: string; slug: string } | null>(null);
 
-  const { balance, txs, budgets, cats, byCat, reload } = useShellData(period);
+  const { balance, txs, txsTruncated, budgets, cats, byCat, reload } = useShellData(period);
   const reloadRef = useRef(reload);
   useEffect(() => { reloadRef.current = reload; }, [reload]);
 
@@ -155,6 +155,7 @@ export default function App() {
     content = (
       <Movimientos
         txs={txs}
+        truncated={txsTruncated}
         cats={cats}
         month={month}
         filterCategory={filterCategory}

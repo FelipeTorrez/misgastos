@@ -83,6 +83,39 @@ describe("GET /v1/transactions?month — fin de mes", () => {
   });
 });
 
+describe("GET /v1/transactions — truncado en 100", () => {
+  it("101 tx en el mes sin limit → header x-transactions-truncated=1 y 100 filas", async () => {
+    db.transactions = Array.from({ length: 101 }, (_, i) => ({
+      id: `t${String(i).padStart(3, "0")}`,
+      user_id: "u1",
+      date: `2026-03-${String((i % 28) + 1).padStart(2, "0")}`,
+      amount: 1000 + i,
+      type: "expense",
+      merchant: `M${i}`,
+    }));
+    const app = Fastify();
+    await app.register(transactionRoutes);
+    const res = await app.inject({ method: "GET", url: "/v1/transactions?month=2026-03" });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["x-transactions-truncated"]).toBe("1");
+    expect(res.json()).toHaveLength(100);
+  });
+
+  it("3 tx → sin header y 3 filas", async () => {
+    db.transactions = [
+      { id: "t1", user_id: "u1", date: "2026-03-05", amount: 1000, type: "expense", merchant: "A" },
+      { id: "t2", user_id: "u1", date: "2026-03-10", amount: 2000, type: "expense", merchant: "B" },
+      { id: "t3", user_id: "u1", date: "2026-03-15", amount: 3000, type: "expense", merchant: "C" },
+    ];
+    const app = Fastify();
+    await app.register(transactionRoutes);
+    const res = await app.inject({ method: "GET", url: "/v1/transactions?month=2026-03" });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["x-transactions-truncated"]).toBeUndefined();
+    expect(res.json()).toHaveLength(3);
+  });
+});
+
 describe("GET /v1/transactions/:id — correo original", () => {
   async function buildApp() {
     const app = Fastify();

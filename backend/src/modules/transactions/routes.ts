@@ -54,7 +54,11 @@ export async function transactionRoutes(app: FastifyInstance) {
     const userId = getUserId(req);
     const { month, category_id, account_id, from, to } = parsed.data;
     const limit = parsed.data.limit ?? 100;
-    if (isMockMode) return withReviewReason(mockStore.listTransactions(userId, { month, category_id, account_id, from, to, limit }));
+    if (isMockMode) {
+      const rows = mockStore.listTransactions(userId, { month, category_id, account_id, from, to, limit });
+      if (rows.length >= limit) reply.header("x-transactions-truncated", "1");
+      return withReviewReason(rows);
+    }
     let q = supabase.from("transactions").select("*").eq("user_id", userId).order("date", { ascending: false }).limit(limit);
     if (from || to) {
       if (from) q = q.gte("date", from);
@@ -70,7 +74,9 @@ export async function transactionRoutes(app: FastifyInstance) {
     if (account_id) q = q.eq("account_id", account_id);
     const { data, error } = await q;
     if (error) return reply.status(503).send({ error: error.message, code: "db_unavailable" });
-    return withReviewReason(data ?? []);
+    const rows = withReviewReason(data ?? []);
+    if (rows.length >= limit) reply.header("x-transactions-truncated", "1");
+    return rows;
   });
 
   app.post("/v1/transactions", async (req, reply) => {
