@@ -21,8 +21,9 @@ function ClassificationChip({ tx }: { tx: any }) {
   );
 }
 
-export function Movimientos({ txs, cats, month, filterCategory, onClearFilter, onRefresh }: {
+export function Movimientos({ txs, truncated, cats, month, filterCategory, onClearFilter, onRefresh }: {
   txs: any[];
+  truncated?: boolean;
   cats: Category[];
   month: string;
   filterCategory?: { id: string; label: string; slug: string } | null;
@@ -157,6 +158,9 @@ export function Movimientos({ txs, cats, month, filterCategory, onClearFilter, o
         data={filtered}
         keyExtractor={i => i.id}
         contentContainerStyle={{ padding: 16, paddingBottom: 140 }}
+        ListHeaderComponent={truncated ? (
+          <Text style={s.truncatedBanner}>Mostrando los 100 movimientos más recientes de este periodo</Text>
+        ) : null}
         ListEmptyComponent={<Text style={s.muted}>{filterCategory ? "Sin movimientos en esta categoría." : "Aún no hay movimientos este mes. Usa el botón +."}</Text>}
         renderItem={({ item }) => (
           <SwipeRow onDelete={() => deleteTx(item)}>
@@ -279,6 +283,7 @@ const s = StyleSheet.create({
   toast: { position: "absolute", top: 14, left: 14, right: 14, backgroundColor: C.surface, borderWidth: 1, borderColor: C.border, padding: 14, borderRadius: R.lg, zIndex: 100 },
   toastText: { color: C.text, fontWeight: "700", textAlign: "center" },
   muted: { color: C.dim, textAlign: "center", marginTop: 40 },
+  truncatedBanner: { color: C.dim, fontSize: 12, textAlign: "center", marginBottom: 12 },
   row: { backgroundColor: C.surface, padding: 14, borderRadius: 12, flexDirection: "row", alignItems: "center", gap: 10, minHeight: 68 },
   rowPending: { borderLeftWidth: 3, borderLeftColor: "#f59e0b" },
   center: { flex: 1, minWidth: 0, justifyContent: "center" },

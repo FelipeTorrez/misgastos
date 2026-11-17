@@ -32,6 +32,7 @@ export type UserSettings = {
 export type ShellData = {
   balance: Balance;
   txs: any[];
+  txsTruncated: boolean;
   budgets: Budget[];
   cats: Category[];
   byCat: Record<string, number>;
@@ -61,6 +62,7 @@ function budgetsQuery(p: Period): string {
 export function useShellData(period: Period): ShellData {
   const [balance, setBalance] = useState<Balance>({ income: 0, expense: 0, balance: 0, weekly: [], range: undefined });
   const [txs, setTxs] = useState<any[]>([]);
+  const [txsTruncated, setTxsTruncated] = useState(false);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [cats, setCats] = useState<Category[]>([]);
   const [byCategory, setByCategory] = useState<any[]>([]);
@@ -71,7 +73,11 @@ export function useShellData(period: Period): ShellData {
     try {
       const [b, t, bd] = await Promise.all([
         fetch(`${API_URL}/v1/balance?${balanceQuery(p)}`).then(r => (r.ok ? r.json() : null)).catch(() => null),
-        fetch(`${API_URL}/v1/transactions?${txsQuery(p)}`).then(r => (r.ok ? r.json() : [])).catch(() => []),
+        fetch(`${API_URL}/v1/transactions?${txsQuery(p)}`).then(async r => {
+          if (!r.ok) return { rows: [], truncated: false };
+          const rows = await r.json().catch(() => []);
+          return { rows, truncated: r.headers?.get?.("x-transactions-truncated") === "1" };
+        }).catch(() => ({ rows: [], truncated: false })),
         fetch(`${API_URL}/v1/budgets?${budgetsQuery(p)}`).then(r => (r.ok ? r.json() : [])).catch(() => []),
       ]);
       if (b) {
@@ -79,7 +85,8 @@ export function useShellData(period: Period): ShellData {
         if (Array.isArray(b.by_category)) setByCategory(b.by_category);
         else setByCategory([]);
       }
-      if (Array.isArray(t)) setTxs(t);
+      if (Array.isArray(t.rows)) setTxs(t.rows);
+      setTxsTruncated(!!t.truncated);
       if (Array.isArray(bd)) setBudgets(bd);
     } catch {}
     setLoading(false);
@@ -103,7 +110,7 @@ export function useShellData(period: Period): ShellData {
     return m;
   }, [txs, byCategory]);
 
-  return { balance, txs, budgets, cats, byCat, byCategory, loading, reload: () => load(period) };
+  return { balance, txs, txsTruncated, budgets, cats, byCat, byCategory, loading, reload: () => load(period) };
 }
 
 export async function fetchSettings(): Promise<UserSettings | null> {
