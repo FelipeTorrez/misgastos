@@ -53,9 +53,10 @@ export async function transactionRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.status(400).send(parsed.error.flatten());
     const userId = getUserId(req);
     const { month, category_id, account_id, from, to } = parsed.data;
-    const limit = parsed.data.limit ?? 100;
+    const limit = parsed.data.limit ?? 200;
     if (isMockMode) {
       const rows = mockStore.listTransactions(userId, { month, category_id, account_id, from, to, limit });
+      reply.header("x-transactions-limit", String(limit));
       if (rows.length >= limit) reply.header("x-transactions-truncated", "1");
       return withReviewReason(rows);
     }
@@ -75,6 +76,7 @@ export async function transactionRoutes(app: FastifyInstance) {
     const { data, error } = await q;
     if (error) return reply.status(503).send({ error: error.message, code: "db_unavailable" });
     const rows = withReviewReason(data ?? []);
+    reply.header("x-transactions-limit", String(limit));
     if (rows.length >= limit) reply.header("x-transactions-truncated", "1");
     return rows;
   });

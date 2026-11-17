@@ -22,9 +22,10 @@ function ClassificationChip({ tx }: { tx: any }) {
   );
 }
 
-export function Movimientos({ txs, truncated, cats, month, filterCategory, onClearFilter, onRefresh }: {
+export function Movimientos({ txs, truncated, limit, cats, month, filterCategory, onClearFilter, onRefresh }: {
   txs: any[];
   truncated?: boolean;
+  limit?: number;
   cats: Category[];
   month: string;
   filterCategory?: { id: string; label: string; slug: string } | null;
@@ -182,7 +183,7 @@ export function Movimientos({ txs, truncated, cats, month, filterCategory, onCle
         keyExtractor={i => i.id}
         contentContainerStyle={{ padding: 16, paddingBottom: 140 }}
         ListHeaderComponent={truncated ? (
-          <Text style={s.truncatedBanner}>Mostrando los 100 movimientos más recientes de este periodo</Text>
+          <Text style={s.truncatedBanner}>Mostrando los {limit ?? 100} movimientos más recientes de este periodo</Text>
         ) : null}
         ListEmptyComponent={<Text style={s.muted}>{searching ? `Sin resultados para "${q.trim()}"` : filterCategory ? "Sin movimientos en esta categoría." : "Aún no hay movimientos este mes. Usa el botón +."}</Text>}
         renderItem={({ item }) => (

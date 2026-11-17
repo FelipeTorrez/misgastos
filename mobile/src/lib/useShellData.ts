@@ -36,6 +36,7 @@ export type ShellData = {
   prevExpense: number | null;
   txs: any[];
   txsTruncated: boolean;
+  txsLimit: number;
   budgets: Budget[];
   cats: Category[];
   byCat: Record<string, number>;
@@ -74,6 +75,7 @@ export function useShellData(period: Period): ShellData {
   const [prevExpense, setPrevExpense] = useState<number | null>(null);
   const [txs, setTxs] = useState<any[]>([]);
   const [txsTruncated, setTxsTruncated] = useState(false);
+  const [txsLimit, setTxsLimit] = useState(100);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [cats, setCats] = useState<Category[]>([]);
   const [byCategory, setByCategory] = useState<any[]>([]);
@@ -85,10 +87,12 @@ export function useShellData(period: Period): ShellData {
       const [b, t, bd, pb] = await Promise.all([
         fetch(`${API_URL}/v1/balance?${balanceQuery(p)}`).then(r => (r.ok ? r.json() : null)).catch(() => null),
         fetch(`${API_URL}/v1/transactions?${txsQuery(p)}`).then(async r => {
-          if (!r.ok) return { rows: [], truncated: false };
+          if (!r.ok) return { rows: [], truncated: false, limit: 100 };
           const rows = await r.json().catch(() => []);
-          return { rows, truncated: r.headers?.get?.("x-transactions-truncated") === "1" };
-        }).catch(() => ({ rows: [], truncated: false })),
+          const limitHeader = r.headers?.get?.("x-transactions-limit");
+          const limit = limitHeader ? parseInt(limitHeader, 10) || 100 : 100;
+          return { rows, truncated: r.headers?.get?.("x-transactions-truncated") === "1", limit };
+        }).catch(() => ({ rows: [], truncated: false, limit: 100 })),
         fetch(`${API_URL}/v1/budgets?${budgetsQuery(p)}`).then(r => (r.ok ? r.json() : [])).catch(() => []),
         fetch(`${API_URL}/v1/balance?${prevBalanceQuery(p)}`).then(r => (r.ok ? r.json() : null)).catch(() => null),
       ]);
@@ -99,6 +103,7 @@ export function useShellData(period: Period): ShellData {
       }
       if (Array.isArray(t.rows)) setTxs(t.rows);
       setTxsTruncated(!!t.truncated);
+      setTxsLimit(typeof t.limit === "number" ? t.limit : 100);
       if (Array.isArray(bd)) setBudgets(bd);
       if (pb && typeof pb.expense === "number") setPrevExpense(pb.expense);
       else setPrevExpense(null);
@@ -124,7 +129,7 @@ export function useShellData(period: Period): ShellData {
     return m;
   }, [txs, byCategory]);
 
-  return { balance, prevExpense, txs, txsTruncated, budgets, cats, byCat, byCategory, loading, reload: () => load(period) };
+  return { balance, prevExpense, txs, txsTruncated, txsLimit, budgets, cats, byCat, byCategory, loading, reload: () => load(period) };
 }
 
 export async function fetchSettings(): Promise<UserSettings | null> {
