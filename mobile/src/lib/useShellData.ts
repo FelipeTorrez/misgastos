@@ -11,6 +11,10 @@ export type Budget = {
   spent: number;
   remaining: number;
   pct: number;
+  period?: string;
+  partial?: boolean;
+  coveredDays?: number;
+  totalDays?: number;
   categories?: { name: string; slug: string } | null;
   range?: { from: string; to: string } | null;
   effective?: boolean;

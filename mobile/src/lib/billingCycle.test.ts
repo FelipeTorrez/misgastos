@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { currentCycle, cycleDays, shiftCycle } from "./billingCycle";
+import { currentCycle, cycleDays, prevRange, shiftCycle } from "./billingCycle";
 
 describe("cycleDays", () => {
   it("ciclo 2026-10-20→2026-11-19 = 31 días", () => {
@@ -24,6 +24,15 @@ describe("currentCycle bordes", () => {
     expect(currentCycle(20, new Date(2027, 0, 10))).toEqual({
       from: "2026-12-20",
       to: "2027-01-19",
+    });
+  });
+});
+
+describe("prevRange", () => {
+  it("2026-10-20→2026-11-19 apunta al ciclo 2026-09-20→2026-10-19", () => {
+    expect(prevRange("2026-10-20", "2026-11-19")).toEqual({
+      from: "2026-09-20",
+      to: "2026-10-19",
     });
   });
 });
