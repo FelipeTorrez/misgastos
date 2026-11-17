@@ -6,27 +6,36 @@ const { db } = vi.hoisted(() => {
 });
 
 function makeTable(tables: any, tname: string) {
-  const state: any = { filters: [], limit: null, order: null, single: false };
+  const state: any = { filters: [], limit: null, order: null, single: false, patch: null as any };
   const apply = () => {
     let rows = [...(tables[tname] ?? [])];
     for (const f of state.filters) {
       if (f.op === "gte") rows = rows.filter(r => (r[f.field] ?? "") >= f.val);
       else if (f.op === "lt") rows = rows.filter(r => (r[f.field] ?? "") < f.val);
       else if (f.op === "eq") rows = rows.filter(r => r[f.field] === f.val);
+      else if (f.op === "is") rows = rows.filter(r => (f.val === null ? r[f.field] == null : r[f.field] === f.val));
     }
     if (state.limit) rows = rows.slice(0, state.limit);
     return rows;
   };
   const b: any = {
     eq: (f: string, v: any) => { state.filters.push({ op: "eq", field: f, val: v }); return b; },
+    is: (f: string, v: any) => { state.filters.push({ op: "is", field: f, val: v }); return b; },
     gte: (f: string, v: any) => { state.filters.push({ op: "gte", field: f, val: v }); return b; },
     lt: (f: string, v: any) => { state.filters.push({ op: "lt", field: f, val: v }); return b; },
     or: (_c: string) => b,
     limit: (n: number) => { state.limit = n; return b; },
     order: (f: string, o: any) => { state.order = { f, o }; return b; },
     select: (_c: string) => b,
+    insert: (row: any) => {
+      const r = { id: `b-${(tables[tname] ?? []).length + 1}`, ...row };
+      (tables[tname] ?? []).push(r);
+      return { select: (_c: string) => ({ single: () => ({ data: r, error: null }) }) };
+    },
+    update: (patch: any) => { state.patch = patch; return b; },
     single: () => {
       const rows = apply();
+      if (state.patch) for (const r of rows) Object.assign(r, state.patch);
       return { data: rows[0] ?? null, error: null };
     },
     then: (cb: any) => cb(db.error ? { data: null, error: db.error } : { data: apply(), error: null }),
@@ -77,7 +86,7 @@ describe("GET /v1/budgets — validación month/from/to", () => {
       // 2026-12-01T02:30Z = 30-nov 23:30 en Santiago → mes esperado 2026-11.
       vi.setSystemTime(new Date("2026-12-01T02:30:00Z"));
       db.budgets = [
-        { id: "b1", user_id: "u1", category_id: null, amount: 100000, month: "2026-11-01" },
+        { id: "b1", user_id: "u1", category_id: null, amount: 100000, month: "2026-11-01", period: "monthly" },
       ];
       const app = Fastify();
       await app.register(budgetRoutes);
@@ -93,7 +102,7 @@ describe("GET /v1/budgets — validación month/from/to", () => {
 
   it("?month=2026-11 devuelve lo mismo que ?month=2026-11-01", async () => {
     db.budgets = [
-      { id: "b1", user_id: "u1", category_id: null, amount: 50000, month: "2026-11-01" },
+      { id: "b1", user_id: "u1", category_id: null, amount: 50000, month: "2026-11-01", period: "monthly" },
     ];
     const app = Fastify();
     await app.register(budgetRoutes);
@@ -107,8 +116,8 @@ describe("GET /v1/budgets — validación month/from/to", () => {
 
   it("from/to a caballo de 2 meses prorratea amount y expone range", async () => {
     db.budgets = [
-      { id: "b1", user_id: "u1", category_id: "cat-1", amount: 31000, month: "2026-10-01", categories: { name: "Comida", slug: "food" } },
-      { id: "b2", user_id: "u1", category_id: "cat-1", amount: 30000, month: "2026-11-01", categories: { name: "Comida", slug: "food" } },
+      { id: "b1", user_id: "u1", category_id: "cat-1", amount: 31000, month: "2026-10-01", period: "monthly", categories: { name: "Comida", slug: "food" } },
+      { id: "b2", user_id: "u1", category_id: "cat-1", amount: 30000, month: "2026-11-01", period: "monthly", categories: { name: "Comida", slug: "food" } },
     ];
     const app = Fastify();
     await app.register(budgetRoutes);
@@ -120,5 +129,84 @@ describe("GET /v1/budgets — validación month/from/to", () => {
     const expected = Math.round(31000 * 12 / 31) + Math.round(30000 * 19 / 30);
     expect(body[0].amount).toBe(expected);
     expect(body[0].range).toEqual({ from: "2026-10-20", to: "2026-11-19" });
+  });
+});
+
+describe("GET /v1/budgets from/to — presupuestos por ciclo (period='cycle')", () => {
+  it("(a) con budget cycle para from => amount sin prorratear, spent del rango, partial=false", async () => {
+    db.budgets = [
+      { id: "b1", user_id: "u1", category_id: "cat-1", amount: 70000, month: "2026-10-20", period: "cycle" },
+    ];
+    db.transactions = [
+      { id: "t1", user_id: "u1", type: "expense", status: "ok", date: "2026-10-25", amount: 20000, category_id: "cat-1" },
+      { id: "t2", user_id: "u1", type: "expense", status: "ok", date: "2026-11-10", amount: 25500, category_id: "cat-1" },
+    ];
+    const app = Fastify();
+    await app.register(budgetRoutes);
+    const res = await app.inject({ method: "GET", url: "/v1/budgets?from=2026-10-20&to=2026-11-19" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toHaveLength(1);
+    expect(body[0].amount).toBe(70000);
+    expect(body[0].spent).toBe(45500);
+    expect(body[0].pct).toBe(65);
+    expect(body[0].period).toBe("cycle");
+    expect(body[0].partial).toBe(false);
+    expect(body[0].range).toEqual({ from: "2026-10-20", to: "2026-11-19" });
+  });
+
+  it("(b) solo budget mensual => fallback con spent del tramo cubierto y partial=true", async () => {
+    db.budgets = [
+      { id: "b1", user_id: "u1", category_id: "cat-1", amount: 70000, month: "2026-10-01", period: "monthly" },
+    ];
+    db.transactions = [
+      { id: "t1", user_id: "u1", type: "expense", status: "ok", date: "2026-10-25", amount: 30000, category_id: "cat-1" },
+      { id: "t2", user_id: "u1", type: "expense", status: "ok", date: "2026-11-10", amount: 15500, category_id: "cat-1" },
+    ];
+    const app = Fastify();
+    await app.register(budgetRoutes);
+    const res = await app.inject({ method: "GET", url: "/v1/budgets?from=2026-10-20&to=2026-11-19" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toHaveLength(1);
+    // solo octubre prorrateado (12/31), gasto solo del tramo cubierto
+    expect(body[0].amount).toBe(Math.round(70000 * 12 / 31));
+    expect(body[0].spent).toBe(30000);
+    expect(body[0].period).toBe("monthly");
+    expect(body[0].partial).toBe(true);
+    expect(body[0].coveredDays).toBe(12);
+    expect(body[0].totalDays).toBe(31);
+  });
+
+  it("(c) GET por month no devuelve budgets de ciclo", async () => {
+    db.budgets = [
+      { id: "b1", user_id: "u1", category_id: "cat-1", amount: 50000, month: "2026-10-01", period: "monthly" },
+      { id: "b2", user_id: "u1", category_id: "cat-2", amount: 70000, month: "2026-10-01", period: "cycle" },
+    ];
+    const app = Fastify();
+    await app.register(budgetRoutes);
+    const res = await app.inject({ method: "GET", url: "/v1/budgets?month=2026-10" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toHaveLength(1);
+    expect(body[0]).toMatchObject({ id: "b1", month: "2026-10-01" });
+  });
+
+  it("(d) POST period='cycle' persiste month sin normalizar a día 01", async () => {
+    const app = Fastify();
+    await app.register(budgetRoutes);
+    const catId = "123e4567-e89b-12d3-a845-426614174000";
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/budgets",
+      payload: { category_id: catId, amount: 70000, month: "2026-10-20", period: "cycle" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toMatchObject({ month: "2026-10-20", period: "cycle", amount: 70000 });
+    expect(db.budgets).toHaveLength(1);
+    // y el GET del ciclo lo devuelve sin prorratear
+    const get = await app.inject({ method: "GET", url: "/v1/budgets?from=2026-10-20&to=2026-11-19" });
+    expect(get.json()).toHaveLength(1);
+    expect(get.json()[0].amount).toBe(70000);
   });
 });

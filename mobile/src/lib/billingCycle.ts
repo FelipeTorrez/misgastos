@@ -67,6 +67,11 @@ export function shiftCycle(range: DateRange, delta: number): DateRange {
   };
 }
 
+/** Rango del ciclo anterior a [from, to] (un mes hacia atrás). */
+export function prevRange(from: string, to: string): DateRange {
+  return shiftCycle({ from, to }, -1);
+}
+
 function fmtShort(ymd: string): string {
   const { m, d } = parse(ymd);
   return `${d} ${MESES_CORTO[m - 1]}`;

@@ -10,7 +10,7 @@ import { SwipeRow } from "../components/ui/SwipeRow";
 import { MIcon } from "../components/ui/MIcon";
 import { API_URL } from "../lib/supabase";
 import { fmtCLP } from "../lib/format";
-import { cycleDays, rangeLabel } from "../lib/billingCycle";
+import { cycleDays, prevRange, rangeLabel } from "../lib/billingCycle";
 
 export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive, range, onGoMonth }: {
   budgets: Budget[];
@@ -29,7 +29,15 @@ export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive, rang
   const notify = (m: string) => { setToast(m); setTimeout(() => setToast(null), 2800); };
   const expenseCats = cats.filter(c => c.type === "expense");
   const cycleN = rangeActive && range ? cycleDays(range.from, range.to) : 0;
-  const cycleSubtitle = cycleN > 0 ? `Ciclo ${rangeLabel(range!)} · ${cycleN} días` : "Ciclo — límites prorrateados";
+  const isCycle = budgets.some(b => b.period === "cycle");
+  const cov = budgets.find(b => b.coveredDays != null && b.totalDays != null);
+  const cycleSubtitle = !rangeActive
+    ? ""
+    : isCycle
+      ? "Límites del ciclo"
+      : cov
+        ? `Límites mensuales prorrateados · ${cov.coveredDays} de ${cov.totalDays} días`
+        : "Límites mensuales prorrateados";
   const rows = useMemo(() => {
     return budgets
       .filter((b): b is Budget => Boolean(b.category_id))
@@ -54,11 +62,14 @@ export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive, rang
     if (!selectedId) return;
     const amt = parseInt(amountText.replace(/\D/g, ""), 10);
     if (!amt) { notify("Ingresa un monto válido"); return; }
+    const payload = rangeActive && range
+      ? { category_id: selectedId, amount: amt, month: range.from, period: "cycle" }
+      : { category_id: selectedId, amount: amt, month: `${month}-01`, period: "monthly" };
     try {
       const res = await fetch(`${API_URL}/v1/budgets`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ category_id: selectedId, amount: amt, month: `${month}-01` }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) { notify("No se pudo guardar el límite"); return; }
       setConfigOpen(false);
@@ -78,6 +89,28 @@ export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive, rang
   }
 
   async function copyPrev() {
+    if (rangeActive && range) {
+      const prev = prevRange(range.from, range.to);
+      try {
+        const res = await fetch(`${API_URL}/v1/budgets?from=${prev.from}&to=${prev.to}`);
+        const list = res.ok ? await res.json() : [];
+        const withCat = (Array.isArray(list) ? list : []).filter((b: any) => b.category_id);
+        if (withCat.length === 0) { notify(`No hay presupuestos en el ciclo ${rangeLabel(prev)} para copiar`); return; }
+        let ok = 0;
+        for (const b of withCat) {
+          if (budgets.find(x => x.category_id === b.category_id)) continue;
+          const r = await fetch(`${API_URL}/v1/budgets`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ category_id: b.category_id, amount: b.amount, month: prev.from, period: "cycle" }),
+          });
+          if (r.ok) ok++;
+        }
+        onRefresh?.();
+        notify(ok > 0 ? `${ok} límites importados del ciclo ${rangeLabel(prev)}` : "Nada nuevo para importar (ya estaban definidos)");
+      } catch { notify("Error de red al copiar"); }
+      return;
+    }
     const prev = shiftMonth(month, -1);
     try {
       const res = await fetch(`${API_URL}/v1/budgets?month=${prev}-01`);
@@ -90,7 +123,7 @@ export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive, rang
         const r = await fetch(`${API_URL}/v1/budgets`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ category_id: b.category_id, amount: b.amount, month: `${month}-01` }),
+          body: JSON.stringify({ category_id: b.category_id, amount: b.amount, month: `${month}-01`, period: "monthly" }),
         });
         if (r.ok) ok++;
       }
@@ -110,30 +143,36 @@ export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive, rang
           <Text style={s.title}>Metas & Presupuestos</Text>
           <Text style={s.subtitle}>{rangeActive ? cycleSubtitle : "Límites mensuales por categoría"}</Text>
         </View>
-        {!rangeActive && (
-          <TouchableOpacity style={s.configBtn} onPress={openConfig} activeOpacity={0.8}>
+        <TouchableOpacity style={s.configBtn} onPress={openConfig} activeOpacity={0.8}>
             <MIcon name="cog" size={14} color="#04121F" />
             <Text style={s.configText}>Configurar</Text>
           </TouchableOpacity>
-        )}
       </View>
 
-      <Text style={s.hint}>{rangeActive ? "Solo lectura — los límites se cargan en la vista Mes" : "Desliza para borrar · Toca para editar"}</Text>
+      <Text style={s.hint}>{rangeActive ? "Define límites por ciclo con Configurar" : "Desliza para borrar · Toca para editar"}</Text>
 
       {rows.length === 0 ? (
         <View style={s.empty}>
           <View style={s.emptyIcon}><MIcon name="target" size={28} color={C.primary} /></View>
           <Text style={s.emptyTitle}>{rangeActive ? "Sin límites en este ciclo" : "Aún no has definido límites"}</Text>
-          <Text style={s.emptySub}>{rangeActive ? "Los límites se cargan en la vista Mes y aquí se ven prorrateados." : "Configura tus categorías o copia las del mes anterior."}</Text>
+          <Text style={s.emptySub}>{rangeActive ? "Define un límite para este ciclo o copia los del ciclo anterior." : "Configura tus categorías o copia las del mes anterior."}</Text>
           {rangeActive ? (
-            onGoMonth ? (
-              <View style={s.emptyBtns}>
+            <View style={s.emptyBtns}>
+              <TouchableOpacity style={s.primaryBtn} onPress={openConfig} activeOpacity={0.85}>
+                <MIcon name="cog" size={14} color="#04121F" />
+                <Text style={s.primaryBtnText}>Configurar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.ghostBtn} onPress={copyPrev} activeOpacity={0.85}>
+                <MIcon name="content-copy" size={14} color={C.primary} />
+                <Text style={s.ghostBtnText}>Copiar del ciclo anterior</Text>
+              </TouchableOpacity>
+              {onGoMonth ? (
                 <TouchableOpacity style={s.ghostBtn} onPress={onGoMonth} activeOpacity={0.85}>
                   <MIcon name="calendar-month" size={14} color={C.primary} />
                   <Text style={s.ghostBtnText}>Ir a Mes</Text>
                 </TouchableOpacity>
-              </View>
-            ) : null
+              ) : null}
+            </View>
           ) : (
             <View style={s.emptyBtns}>
               <TouchableOpacity style={s.primaryBtn} onPress={openConfig} activeOpacity={0.85}>
@@ -176,7 +215,7 @@ export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive, rang
       )}
 
       <Sheet visible={configOpen} onClose={() => setConfigOpen(false)} title="Configurar límites">
-        <Text style={s.hint}>Elige una categoría y define su límite mensual</Text>
+        <Text style={s.hint}>{rangeActive ? "Elige una categoría y define su límite del ciclo" : "Elige una categoría y define su límite mensual"}</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.catScroll}>
           {expenseCats.map(c => (
             <TouchableOpacity
@@ -192,7 +231,7 @@ export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive, rang
 
         {selected ? (
           <View style={{ marginTop: 8 }}>
-            <Text style={s.limLabel}>Límite mensual — {selected.label}</Text>
+            <Text style={s.limLabel}>{rangeActive ? "Límite del ciclo" : "Límite mensual"} — {selected.label}</Text>
             <View style={s.amtRow}>
               <TextInput
                 style={s.input}

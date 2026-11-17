@@ -113,7 +113,8 @@ export const mockStore = {
     return this.budgets.filter(b => b.user_id === userId && b.month === month);
   },
   upsertBudget(userId: string, data: { category_id: string | null; amount: number; month: string; period?: string }) {
-    const idx = this.budgets.findIndex(b => b.user_id === userId && b.month === data.month && b.category_id === data.category_id);
+    const period = data.period ?? "monthly";
+    const idx = this.budgets.findIndex(b => b.user_id === userId && b.month === data.month && b.category_id === data.category_id && (b.period ?? "monthly") === period);
     if (idx >= 0) {
       this.budgets[idx] = { ...this.budgets[idx], ...data, updated_at: new Date().toISOString() };
       this._persist();

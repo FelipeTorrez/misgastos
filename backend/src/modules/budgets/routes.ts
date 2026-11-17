@@ -2,14 +2,14 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { supabase, getUserId, isMockMode } from "../../lib/supabase.js";
 import { mockStore } from "../../lib/mockStore.js";
-import { monthBounds, monthOverlaps, currentMonthLocal } from "../../lib/dateRange.js";
+import { monthBounds, monthOverlaps, rangeDays, currentMonthLocal } from "../../lib/dateRange.js";
 import { BudgetsQuery } from "../../lib/queryDates.js";
 
 const CreateBudget = z.object({
   category_id: z.string().uuid().nullable(), // null = global
   amount: z.number().int().positive(),
-  month: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), // YYYY-MM-01
-  period: z.string().default("monthly")
+  month: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), // monthly: YYYY-MM-01 · cycle: fecha de inicio del ciclo
+  period: z.enum(["monthly", "cycle"]).default("monthly")
 });
 
 export async function budgetRoutes(app: FastifyInstance) {
@@ -28,46 +28,109 @@ export async function budgetRoutes(app: FastifyInstance) {
     let budgets: any[], txs: any[];
 
     if (from && to) {
-      const overlaps = monthOverlaps(from, to);
-      const budgetByCat = new Map<string, number>();
-      let globalAmount = 0;
-      let rawBudgets: any[] = [];
-
-      for (const o of overlaps) {
-        let monthBs: any[] = [];
-        if (isMockMode) {
-          monthBs = mockStore.listBudgets(userId, o.month);
-        } else {
-          const { data: bs } = await supabase.from("budgets").select("*, categories(name, slug)").eq("user_id", userId).eq("month", o.month);
-          monthBs = bs ?? [];
-        }
-        rawBudgets = rawBudgets.concat(monthBs);
-        for (const b of monthBs as any[]) {
-          const prorated = Math.round(b.amount * o.ratio);
-          if (b.category_id) budgetByCat.set(b.category_id, (budgetByCat.get(b.category_id) ?? 0) + prorated);
-          else globalAmount += prorated;
-        }
+      // Rama ciclo: presupuestos con period='cycle' y month=from (inicio del ciclo)
+      // se devuelven SIN prorratear contra el gasto de todo el rango.
+      let cycleBs: any[];
+      if (isMockMode) {
+        cycleBs = mockStore.listBudgets(userId, from).filter(b => b.period === "cycle");
+      } else {
+        const { data: bs } = await supabase.from("budgets").select("*, categories(name, slug)").eq("user_id", userId).eq("month", from).eq("period", "cycle");
+        cycleBs = bs ?? [];
       }
 
-      // spent: gasto real dentro del rango
+      // spent: gasto real dentro del rango (con fecha para el prorrateo por tramo del fallback)
       let rangeTxs: any[];
       if (isMockMode) {
         rangeTxs = mockStore.transactions.filter(t =>
           t.user_id === userId && t.type === "expense" &&
           t.status !== "duplicate" && t.status !== "ignored" &&
           typeof t.date === "string" && t.date.slice(0, 10) >= from && t.date.slice(0, 10) <= to
-        ).map(t => ({ amount: t.amount, category_id: t.category_id }));
+        ).map(t => ({ amount: t.amount, category_id: t.category_id, date: t.date }));
       } else {
         const start = from;
         const toExcl = new Date(new Date(`${to}T00:00:00Z`).getTime() + 86400000).toISOString().slice(0, 10);
-        const { data: ts } = await supabase.from("transactions").select("amount, category_id, type, status").eq("user_id", userId).eq("type","expense").gte("date", start).lt("date", toExcl);
+        const { data: ts } = await supabase.from("transactions").select("amount, category_id, date, type, status").eq("user_id", userId).eq("type","expense").gte("date", start).lt("date", toExcl);
         rangeTxs = ((ts ?? []) as any[]).filter(t => t.status !== "duplicate" && t.status !== "ignored");
       }
+
+      if (cycleBs.length > 0) {
+        const byCat: Record<string, number> = {};
+        let globalSpent = 0;
+        for (const t of rangeTxs) {
+          globalSpent += t.amount;
+          if (t.category_id) byCat[t.category_id] = (byCat[t.category_id] ?? 0) + t.amount;
+        }
+        const seen = new Set<string>();
+        let seenGlobal = false;
+        return cycleBs
+          .filter((b: any) => {
+            if (b.category_id) {
+              if (seen.has(b.category_id)) return false;
+              seen.add(b.category_id);
+              return true;
+            }
+            if (seenGlobal) return false;
+            seenGlobal = true;
+            return true;
+          })
+          .map((b: any) => {
+            const spent = b.category_id ? (byCat[b.category_id] ?? 0) : globalSpent;
+            return {
+              ...b,
+              spent,
+              remaining: b.amount - spent,
+              pct: Math.round((spent / b.amount) * 100),
+              month: from,
+              period: "cycle",
+              partial: false,
+              range: { from, to },
+            };
+          });
+      }
+
+      // Fallback: prorrateo de mensuales, con spent SOLO del tramo cubierto
+      // (tramos = solape de cada mes con presupuesto; partial=true si falta algún tramo).
+      const overlaps = monthOverlaps(from, to);
+      const overlapDaysByMonth = new Map(overlaps.map(o => [o.month, o.overlapDays]));
+      const totalDays = rangeDays(from, to);
+      const budgetByCat = new Map<string, number>();
+      const catMonths = new Map<string, Set<string>>();
+      const globalMonths = new Set<string>();
+      let globalAmount = 0;
+      let rawBudgets: any[] = [];
+
+      for (const o of overlaps) {
+        let monthBs: any[] = [];
+        if (isMockMode) {
+          monthBs = mockStore.listBudgets(userId, o.month).filter(b => (b.period ?? "monthly") === "monthly");
+        } else {
+          const { data: bs } = await supabase.from("budgets").select("*, categories(name, slug)").eq("user_id", userId).eq("month", o.month).eq("period", "monthly");
+          monthBs = bs ?? [];
+        }
+        rawBudgets = rawBudgets.concat(monthBs);
+        for (const b of monthBs as any[]) {
+          const prorated = Math.round(b.amount * o.ratio);
+          if (b.category_id) {
+            budgetByCat.set(b.category_id, (budgetByCat.get(b.category_id) ?? 0) + prorated);
+            if (!catMonths.has(b.category_id)) catMonths.set(b.category_id, new Set());
+            catMonths.get(b.category_id)!.add(o.month);
+          } else {
+            globalAmount += prorated;
+            globalMonths.add(o.month);
+          }
+        }
+      }
+
       const byCat: Record<string, number> = {};
       let globalSpent = 0;
       for (const t of rangeTxs) {
-        globalSpent += t.amount;
-        if (t.category_id) byCat[t.category_id] = (byCat[t.category_id] ?? 0) + t.amount;
+        const d10 = typeof t.date === "string" ? t.date.slice(0, 10) : null;
+        if (!d10) continue;
+        const mkey = `${d10.slice(0, 7)}-01`;
+        if (t.category_id && catMonths.get(t.category_id)?.has(mkey)) {
+          byCat[t.category_id] = (byCat[t.category_id] ?? 0) + t.amount;
+        }
+        if (globalMonths.has(mkey)) globalSpent += t.amount;
       }
 
       // unir categorías de presupuestos (dedup por id)
@@ -76,6 +139,10 @@ export async function budgetRoutes(app: FastifyInstance) {
       const merged: (any & { amount: number; effective: boolean })[] = [];
       for (const b of rawBudgets as any[]) {
         const prorated = b.category_id ? (budgetByCat.get(b.category_id) ?? 0) : globalAmount;
+        const coveredMonths = b.category_id ? (catMonths.get(b.category_id) ?? new Set<string>()) : globalMonths;
+        let coveredDays = 0;
+        for (const m of coveredMonths) coveredDays += overlapDaysByMonth.get(m) ?? 0;
+        const partial = coveredDays < totalDays;
         if (b.category_id) {
           if (seen.has(b.category_id)) continue;
           seen.add(b.category_id);
@@ -91,6 +158,10 @@ export async function budgetRoutes(app: FastifyInstance) {
           remaining: prorated - spent,
           pct: Math.round((spent / prorated) * 100),
           month: from,
+          period: "monthly",
+          partial,
+          coveredDays,
+          totalDays,
           range: { from, to },
           effective: b.category_id ? true : (globalAmount > 0),
         });
@@ -99,14 +170,14 @@ export async function budgetRoutes(app: FastifyInstance) {
     }
 
     if (isMockMode) {
-      budgets = mockStore.listBudgets(userId, month);
+      budgets = mockStore.listBudgets(userId, month).filter(b => (b.period ?? "monthly") === "monthly");
       txs = mockStore.transactions.filter(t =>
         t.user_id === userId && t.type === "expense" &&
         t.status !== "duplicate" && t.status !== "ignored" &&
         typeof t.date === "string" && t.date.startsWith(month.slice(0, 7))
       ).map(t => ({ amount: t.amount, category_id: t.category_id }));
     } else {
-      const { data: bs } = await supabase.from("budgets").select("*, categories(name, slug)").eq("user_id", userId).eq("month", month);
+      const { data: bs } = await supabase.from("budgets").select("*, categories(name, slug)").eq("user_id", userId).eq("month", month).eq("period", "monthly");
       budgets = bs ?? [];
       const { start, endExcl } = monthBounds(month.slice(0, 7));
       const { data: ts } = await supabase.from("transactions").select("amount, category_id, type, status").eq("user_id", userId).eq("type","expense").gte("date", start).lt("date", endExcl);
@@ -131,14 +202,17 @@ export async function budgetRoutes(app: FastifyInstance) {
     const userId = getUserId(req);
     const parsed = CreateBudget.safeParse(req.body);
     if (!parsed.success) return reply.status(400).send(parsed.error.flatten());
+    const period = parsed.data.period;
+    // monthly se normaliza a día 01; cycle guarda la fecha de inicio del ciclo tal cual.
+    const monthNorm = period === "cycle" ? parsed.data.month : `${parsed.data.month.slice(0, 7)}-01`;
     if (isMockMode) {
-      const b = mockStore.upsertBudget(userId, parsed.data);
+      const b = mockStore.upsertBudget(userId, { ...parsed.data, month: monthNorm });
       return reply.status(201).send({ ...b, mocked: true });
     }
     // Upsert con ON CONFLICT("user_id,category_id,month") falla porque las únicas únicas
     // son PARCIALES (budgets_category_unique / budgets_global_unique), no una constraint simple.
     // Hacemos find-then-insert/update manual (compatible con category_id null = global).
-    let q = supabase.from("budgets").select("id").eq("user_id", userId).eq("month", parsed.data.month).limit(1);
+    let q = supabase.from("budgets").select("id").eq("user_id", userId).eq("month", monthNorm).eq("period", period).limit(1);
     if (parsed.data.category_id === null) q = q.is("category_id", null);
     else q = q.eq("category_id", parsed.data.category_id);
     const { data: existing } = await q;
@@ -147,7 +221,7 @@ export async function budgetRoutes(app: FastifyInstance) {
       if (updErr) return reply.status(400).send({ error: updErr.message });
       return upd;
     }
-    const { data, error } = await supabase.from("budgets").insert({ ...parsed.data, user_id: userId }).select().single();
+    const { data, error } = await supabase.from("budgets").insert({ ...parsed.data, month: monthNorm, user_id: userId }).select().single();
     if (error) return reply.status(400).send({ error: error.message });
     return reply.status(201).send(data);
   });
