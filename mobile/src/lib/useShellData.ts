@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { API_URL } from "./supabase";
 import { fetchCategories, Category } from "./categories";
+import { prevRange } from "./billingCycle";
+import { shiftMonth } from "../theme/tokens";
 
 export type Balance = { income: number; expense: number; balance: number; weekly: any[]; range?: any };
 export type Budget = {
@@ -31,6 +33,7 @@ export type UserSettings = {
 
 export type ShellData = {
   balance: Balance;
+  prevExpense: number | null;
   txs: any[];
   txsTruncated: boolean;
   budgets: Budget[];
@@ -53,6 +56,13 @@ function budgetsQuery(p: Period): string {
   if (p.type === "month") return `month=${p.month}-01`;
   return `from=${p.from}&to=${p.to}`;
 }
+function prevBalanceQuery(p: Period): string {
+  if (p.type === "range") {
+    const prev = prevRange(p.from, p.to);
+    return `from=${prev.from}&to=${prev.to}`;
+  }
+  return `month=${shiftMonth(p.month, -1)}`;
+}
 
 /**
  * Fuente única de datos del shell persistente.
@@ -61,6 +71,7 @@ function budgetsQuery(p: Period): string {
  */
 export function useShellData(period: Period): ShellData {
   const [balance, setBalance] = useState<Balance>({ income: 0, expense: 0, balance: 0, weekly: [], range: undefined });
+  const [prevExpense, setPrevExpense] = useState<number | null>(null);
   const [txs, setTxs] = useState<any[]>([]);
   const [txsTruncated, setTxsTruncated] = useState(false);
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -71,7 +82,7 @@ export function useShellData(period: Period): ShellData {
   const load = useCallback(async (p: Period) => {
     setLoading(true);
     try {
-      const [b, t, bd] = await Promise.all([
+      const [b, t, bd, pb] = await Promise.all([
         fetch(`${API_URL}/v1/balance?${balanceQuery(p)}`).then(r => (r.ok ? r.json() : null)).catch(() => null),
         fetch(`${API_URL}/v1/transactions?${txsQuery(p)}`).then(async r => {
           if (!r.ok) return { rows: [], truncated: false };
@@ -79,6 +90,7 @@ export function useShellData(period: Period): ShellData {
           return { rows, truncated: r.headers?.get?.("x-transactions-truncated") === "1" };
         }).catch(() => ({ rows: [], truncated: false })),
         fetch(`${API_URL}/v1/budgets?${budgetsQuery(p)}`).then(r => (r.ok ? r.json() : [])).catch(() => []),
+        fetch(`${API_URL}/v1/balance?${prevBalanceQuery(p)}`).then(r => (r.ok ? r.json() : null)).catch(() => null),
       ]);
       if (b) {
         setBalance({ income: b.income ?? 0, expense: b.expense ?? 0, balance: b.balance ?? 0, weekly: b.weekly ?? [], range: b.range });
@@ -88,6 +100,8 @@ export function useShellData(period: Period): ShellData {
       if (Array.isArray(t.rows)) setTxs(t.rows);
       setTxsTruncated(!!t.truncated);
       if (Array.isArray(bd)) setBudgets(bd);
+      if (pb && typeof pb.expense === "number") setPrevExpense(pb.expense);
+      else setPrevExpense(null);
     } catch {}
     setLoading(false);
   }, []);
@@ -110,7 +124,7 @@ export function useShellData(period: Period): ShellData {
     return m;
   }, [txs, byCategory]);
 
-  return { balance, txs, txsTruncated, budgets, cats, byCat, byCategory, loading, reload: () => load(period) };
+  return { balance, prevExpense, txs, txsTruncated, budgets, cats, byCat, byCategory, loading, reload: () => load(period) };
 }
 
 export async function fetchSettings(): Promise<UserSettings | null> {

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, AppState } from "react-native";
 import { C } from "./src/theme/tokens";
+import { monthLabel, shiftMonth } from "./src/theme/tokens";
 import { MIcon } from "./src/components/ui/MIcon";
 import { Sheet } from "./src/components/ui/Sheet";
 import { PeriodPager } from "./src/components/ui/PeriodPager";
@@ -13,7 +14,7 @@ import { IASheet } from "./src/components/ui/IASheet";
 import { hasPermission, startListening, setApiUrl, flushQueue, resendActive } from "./src/native/NotificationListener";
 import { API_URL } from "./src/lib/supabase";
 import { useShellData, fetchSettings, saveSettings, Period, UserSettings } from "./src/lib/useShellData";
-import { currentCycle, DateRange } from "./src/lib/billingCycle";
+import { currentCycle, DateRange, prevRange, rangeLabel } from "./src/lib/billingCycle";
 import { Categorias } from "./src/screens/Categorias";
 import { Movimientos } from "./src/screens/Movimientos";
 import { Presupuesto } from "./src/screens/Presupuesto";
@@ -58,7 +59,7 @@ export default function App() {
   const [addType, setAddType] = useState<"expense" | "income">("expense");
   const [filterCategory, setFilterCategory] = useState<{ id: string; label: string; slug: string } | null>(null);
 
-  const { balance, txs, txsTruncated, budgets, cats, byCat, reload } = useShellData(period);
+  const { balance, prevExpense, txs, txsTruncated, budgets, cats, byCat, reload } = useShellData(period);
   const reloadRef = useRef(reload);
   useEffect(() => { reloadRef.current = reload; }, [reload]);
 
@@ -139,6 +140,9 @@ export default function App() {
 
   const month = period.type === "month" ? period.month : period.from.slice(0, 7);
   const rangeActive = period.type === "range";
+  const prevLabel = period.type === "range"
+    ? rangeLabel(prevRange(period.from, period.to))
+    : monthLabel(shiftMonth(period.month, -1));
   const cycleEnabled = settings?.billing_cycle_enabled === true;
   const cycleRange = cycleEnabled && settings ? currentCycle(settings.billing_cycle_day) : null;
 
@@ -202,6 +206,8 @@ export default function App() {
             income={balance.income}
             expense={balance.expense}
             balance={balance.balance}
+            prevExpense={prevExpense}
+            prevLabel={prevLabel}
             filterCategory={filterCategory}
             onClearFilter={() => setFilterCategory(null)}
           />
