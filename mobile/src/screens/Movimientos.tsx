@@ -1,6 +1,7 @@
-import { View, Text, FlatList, ScrollView, StyleSheet, TouchableOpacity, Pressable } from "react-native";
+import { View, Text, FlatList, ScrollView, StyleSheet, TextInput, TouchableOpacity, Pressable } from "react-native";
 import { useEffect, useState } from "react";
 import { fmtCLP, fmtDate, shortDate } from "../lib/format";
+import { filterTxs } from "../lib/search";
 import { API_URL } from "../lib/supabase";
 import { Category } from "../lib/categories";
 import { C, R } from "../theme/tokens";
@@ -32,6 +33,7 @@ export function Movimientos({ txs, truncated, cats, month, filterCategory, onCle
 }) {
   const [local, setLocal] = useState<any[]>([]);
   const [filter, setFilter] = useState<"all" | "pending" | "confirmed">("all");
+  const [q, setQ] = useState("");
   const [editingTx, setEditingTx] = useState<any>(null);
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
   const [savePref, setSavePref] = useState(true);
@@ -117,6 +119,10 @@ export function Movimientos({ txs, truncated, cats, month, filterCategory, onCle
     if (filter === "confirmed") return tx.status === "confirmed" || tx.status === "corrected";
     return true;
   });
+  // La búsqueda por comercio filtra sobre la lista ya cargada (no dispara red);
+  // complementa el aviso de truncado: solo busca dentro de los movimientos visibles.
+  const searched = filterTxs(filtered, q);
+  const searching = q.trim().length > 0;
   const pendingCount = local.filter(tx => tx.status === "pending_review" || tx.status === "pending_ai").length;
   const isPending = (tx: any) => tx.status === "pending_review" || tx.status === "pending_ai";  const reviewReason = (tx: any): string | null => tx.review_reason ?? tx.metadata?.review_reason ?? null;
   const reviewLabel = (r: string | null) =>
@@ -152,16 +158,33 @@ export function Movimientos({ txs, truncated, cats, month, filterCategory, onCle
             <Text style={s.activeFilterHint}>Filtrado — toca × para ver todo</Text>
           </View>
         )}
+        <View style={s.searchBox}>
+          <MIcon name="magnify" size={16} color={C.faint} />
+          <TextInput
+            style={s.searchInput}
+            value={q}
+            onChangeText={setQ}
+            placeholder="Buscar por comercio"
+            placeholderTextColor={C.faint}
+            returnKeyType="search"
+          />
+          {q.length > 0 && (
+            <TouchableOpacity onPress={() => setQ("")} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <MIcon name="close" size={16} color={C.dim} />
+            </TouchableOpacity>
+          )}
+        </View>
+        {searching && <Text style={s.searchCount}>{searched.length} movimientos</Text>}
       </View>
 
       <FlatList
-        data={filtered}
+        data={searched}
         keyExtractor={i => i.id}
         contentContainerStyle={{ padding: 16, paddingBottom: 140 }}
         ListHeaderComponent={truncated ? (
           <Text style={s.truncatedBanner}>Mostrando los 100 movimientos más recientes de este periodo</Text>
         ) : null}
-        ListEmptyComponent={<Text style={s.muted}>{filterCategory ? "Sin movimientos en esta categoría." : "Aún no hay movimientos este mes. Usa el botón +."}</Text>}
+        ListEmptyComponent={<Text style={s.muted}>{searching ? `Sin resultados para "${q.trim()}"` : filterCategory ? "Sin movimientos en esta categoría." : "Aún no hay movimientos este mes. Usa el botón +."}</Text>}
         renderItem={({ item }) => (
           <SwipeRow onDelete={() => deleteTx(item)}>
             <Pressable style={({ pressed }) => [s.row, isPending(item) && s.rowPending, pressed && { opacity: 0.75 }]} onPress={() => openEdit(item)}>
@@ -280,6 +303,9 @@ const s = StyleSheet.create({
   activeFilterChip: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.surfaceAlt, borderWidth: 1, borderColor: C.border, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, alignSelf: "flex-start" },
   activeFilterLabel: { color: C.text, fontWeight: "700", fontSize: 13 },
   activeFilterHint: { color: C.faint, fontSize: 11 },
+  searchBox: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10, backgroundColor: C.surfaceAlt, borderWidth: 1, borderColor: C.border, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
+  searchInput: { flex: 1, color: C.text, fontSize: 14, padding: 0 },
+  searchCount: { color: C.dim, fontSize: 12, marginTop: 6 },
   toast: { position: "absolute", top: 14, left: 14, right: 14, backgroundColor: C.surface, borderWidth: 1, borderColor: C.border, padding: 14, borderRadius: R.lg, zIndex: 100 },
   toastText: { color: C.text, fontWeight: "700", textAlign: "center" },
   muted: { color: C.dim, textAlign: "center", marginTop: 40 },
