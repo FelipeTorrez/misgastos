@@ -1,23 +1,34 @@
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { C } from "../../theme/tokens";
 import { fmtCLP, deltaPct } from "../../lib/format";
+import { projectCycle } from "../../lib/projection";
 import { CategoryCircle } from "./CategoryCircle";
 import { MIcon } from "./MIcon";
+
+const MESES_CORTO = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+/** "2026-11-19" → "19 nov" para la línea de proyección. */
+function shortTo(ymd: string): string {
+  const [_, m, d] = ymd.split("-").map(Number);
+  return `${d} ${MESES_CORTO[m! - 1]}`;
+}
 
 /**
  * Hero fijo del shell: Total Gastos protagonista + Ingresos y Balance a la derecha
  * (Balance destacado, con más aire). Chip de filtro debajo.
  */
-export function BalanceHero({ income, expense, balance, prevExpense, prevLabel, filterCategory, onClearFilter }: {
+export function BalanceHero({ income, expense, balance, prevExpense, prevLabel, range, filterCategory, onClearFilter }: {
   income: number;
   expense: number;
   balance: number;
   prevExpense?: number | null;
   prevLabel?: string | null;
+  range?: { from: string; to: string } | null;
   filterCategory?: { id: string; label: string; slug: string } | null;
   onClearFilter?: () => void;
 }) {
   const delta = prevExpense != null ? deltaPct(expense, prevExpense) : null;
+  const proj = range ? projectCycle({ spent: expense, from: range.from, to: range.to }) : null;
   return (
     <View style={s.wrap}>
       <View style={s.row}>
@@ -27,6 +38,11 @@ export function BalanceHero({ income, expense, balance, prevExpense, prevLabel, 
           {delta != null && (
             <Text style={[s.delta, { color: delta > 0 ? C.warning : delta < 0 ? C.positive : C.dim }]}>
               {delta > 0 ? "▲" : delta < 0 ? "▼" : "•"} {Math.abs(delta)}% vs {prevLabel ?? "periodo anterior"}
+            </Text>
+          )}
+          {proj && range && (
+            <Text style={s.proj}>
+              Proyección al {shortTo(range.to)}: {fmtCLP(proj.projected)} · {fmtCLP(Math.round(proj.dailyAvg))}/día
             </Text>
           )}
         </View>
@@ -61,6 +77,7 @@ const s = StyleSheet.create({
   label: { color: C.dim, fontSize: 12, fontWeight: "700", letterSpacing: 0.4, textTransform: "uppercase" },
   big: { color: C.text, fontSize: 38, fontWeight: "800", letterSpacing: -0.5, marginTop: 4 },
   delta: { fontSize: 13, fontWeight: "700", marginTop: 4 },
+  proj: { color: C.dim, fontSize: 13, fontWeight: "600", marginTop: 2 },
   right: { alignItems: "flex-end", gap: 14 },
   stat: { alignItems: "flex-end", gap: 2 },
   statLabel: { color: C.dim, fontSize: 11, fontWeight: "600", letterSpacing: 0.4, textTransform: "uppercase" },
