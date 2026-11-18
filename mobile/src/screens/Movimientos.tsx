@@ -186,7 +186,9 @@ export function Movimientos({ txs, truncated, limit, cats, month, filterCategory
           <Text style={s.truncatedBanner}>Mostrando los {limit ?? 100} movimientos más recientes de este periodo</Text>
         ) : null}
         ListEmptyComponent={<Text style={s.muted}>{searching ? `Sin resultados para "${q.trim()}"` : filterCategory ? "Sin movimientos en esta categoría." : "Aún no hay movimientos este mes. Usa el botón +."}</Text>}
-        renderItem={({ item }) => (
+        renderItem={({ item }) => {
+          const needsAction = item.status === "pending_review" || item.status === "pending_ai";
+          return (
           <SwipeRow onDelete={() => deleteTx(item)}>
             <Pressable style={({ pressed }) => [s.row, isPending(item) && s.rowPending, pressed && { opacity: 0.75 }]} onPress={() => openEdit(item)}>
               <View style={{ flexShrink: 0 }}>
@@ -197,8 +199,13 @@ export function Movimientos({ txs, truncated, limit, cats, month, filterCategory
                   <Text style={s.merchant} numberOfLines={1} ellipsizeMode="tail">{toTitleCase(item.merchant)}</Text>
                 </View>
                 <View style={s.metaRow}>
-                  {(item.status === "pending_review" || item.status === "pending_ai") && <StatusBadge status={item.status} />}
-                  <ClassificationChip tx={item} />
+                  {needsAction ? (
+                    <View style={{ flexShrink: 0 }}>
+                      <StatusBadge status={item.status} />
+                    </View>
+                  ) : (
+                    <ClassificationChip tx={item} />
+                  )}
                   <Text style={s.meta} numberOfLines={1} ellipsizeMode="tail">{(item.counterparty ? `Recibido de ${item.counterparty}` : (cats.find(c => c.id === item.category_id)?.label ?? (item.type === "income" ? "Ingreso" : item.type === "transfer" ? "Transferencia" : "Sin categoría")))} · {shortDate(item.date)}</Text>
                 </View>
                 {isPending(item) && reviewLabel(reviewReason(item)) && (
@@ -217,7 +224,8 @@ export function Movimientos({ txs, truncated, limit, cats, month, filterCategory
               )}
             </Pressable>
           </SwipeRow>
-        )}
+          );
+        }}
       />
 
       <Sheet visible={!!editingTx} onClose={() => setEditingTx(null)} title="Categoría del movimiento">
