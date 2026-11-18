@@ -3,6 +3,35 @@ export const fmtCLP = (n: number) =>
 export const fmtDate = (iso: string) =>
   new Date(iso).toLocaleDateString("es-CL", { day: "2-digit", month: "2-digit", year: "numeric" });
 
+/** Etiqueta de detalle de un presupuesto ("de $X · ...").
+ * - cycle: "de $M · límite del ciclo (≈$/día)".
+ * - partial con coveredDays: "de $M · C de T días (≈$/día)" dividiendo por coveredDays (NO por cycleN).
+ * - mensual completo: "de $M (≈$/día)" solo si cycleN>0, sin repetir "en N días".
+ */
+export type BudgetLabelInput = {
+  amount: number;
+  period?: string;
+  partial?: boolean;
+  coveredDays?: number | null;
+  totalDays?: number | null;
+};
+
+export function budgetDetailLabel(b: BudgetLabelInput, cycleN: number): string {
+  const amount = fmtCLP(b.amount);
+  if (b.period === "cycle") {
+    const base = `de ${amount} · límite del ciclo`;
+    if (cycleN > 0) return `${base} (≈${fmtCLP(Math.round(b.amount / cycleN))}/día)`;
+    return base;
+  }
+  if (b.partial && b.coveredDays != null && b.coveredDays > 0) {
+    const perDay = fmtCLP(Math.round(b.amount / b.coveredDays));
+    if (b.totalDays != null) return `de ${amount} · ${b.coveredDays} de ${b.totalDays} días (≈${perDay}/día)`;
+    return `de ${amount} (≈${perDay}/día)`;
+  }
+  if (cycleN > 0) return `de ${amount} (≈${fmtCLP(Math.round(b.amount / cycleN))}/día)`;
+  return `de ${amount}`;
+}
+
 /** Variación % del gasto actual vs ciclo anterior. null si no hay base válida. */
 export function deltaPct(current: number, prev: number): number | null {
   if (!Number.isFinite(current) || !Number.isFinite(prev)) return null;

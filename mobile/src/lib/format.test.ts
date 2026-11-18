@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shortDate, deltaPct } from "./format";
+import { shortDate, deltaPct, fmtCLP, budgetDetailLabel } from "./format";
 
 describe("shortDate", () => {
   it("mismo año → 'dd-mm' (5 chars)", () => {
@@ -22,5 +22,28 @@ describe("deltaPct", () => {
 
   it("0 vs 1000 → -100", () => {
     expect(deltaPct(0, 1000)).toBe(-100);
+  });
+});
+
+describe("budgetDetailLabel", () => {
+  it("cycle → 'límite del ciclo' y $/día por cycleN", () => {
+    const label = budgetDetailLabel({ amount: 31000, period: "cycle" }, 31);
+    expect(label).toBe(`de ${fmtCLP(31000)} · límite del ciclo (≈${fmtCLP(1000)}/día)`);
+  });
+
+  it("partial → $/día por coveredDays (27097/12 ≈ 2258, no 874)", () => {
+    const label = budgetDetailLabel(
+      { amount: 27097, partial: true, coveredDays: 12, totalDays: 31 },
+      31,
+    );
+    expect(label).toBe(`de ${fmtCLP(27097)} · 12 de 31 días (≈${fmtCLP(2258)}/día)`);
+    expect(label).toContain(fmtCLP(Math.round(27097 / 12)));
+    expect(label).not.toContain(fmtCLP(Math.round(27097 / 31)));
+  });
+
+  it("mensual completo → sin 'en N días' duplicado", () => {
+    const label = budgetDetailLabel({ amount: 31000 }, 31);
+    expect(label).toBe(`de ${fmtCLP(31000)} (≈${fmtCLP(1000)}/día)`);
+    expect(label).not.toContain("en ");
   });
 });

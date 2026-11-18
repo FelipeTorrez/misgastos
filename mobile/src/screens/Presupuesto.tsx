@@ -9,7 +9,7 @@ import { Sheet } from "../components/ui/Sheet";
 import { SwipeRow } from "../components/ui/SwipeRow";
 import { MIcon } from "../components/ui/MIcon";
 import { API_URL } from "../lib/supabase";
-import { fmtCLP } from "../lib/format";
+import { fmtCLP, budgetDetailLabel } from "../lib/format";
 import { cycleDays, prevRange, rangeLabel } from "../lib/billingCycle";
 
 export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive, range, onGoMonth }: {
@@ -200,7 +200,7 @@ export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive, rang
                     <Text style={s.name}>{name}</Text>
                     <Text style={s.spent}>{fmtCLP(b.spent)}</Text>
                   </View>
-                  <Text style={s.limit}>de {fmtCLP(b.amount)}{b.period === "cycle" ? " · Ciclo" : ""}{b.partial && b.coveredDays != null && b.totalDays != null ? ` · ${b.coveredDays} de ${b.totalDays} días` : ""}{cycleN > 0 ? ` en ${cycleN} días (≈${fmtCLP(Math.round(b.amount / cycleN))}/día)` : ""}</Text>
+                  <Text style={s.limit}>{budgetDetailLabel(b, cycleN)}</Text>
                   <View style={{ marginTop: 8 }}>
                     <Progress pct={b.pct ?? 0} height={7} />
                   </View>
