@@ -209,6 +209,7 @@ export default function App() {
             balance={balance.balance}
             prevExpense={prevExpense}
             prevLabel={prevLabel}
+            range={period.type === "range" ? { from: period.from, to: period.to } : null}
             filterCategory={filterCategory}
             onClearFilter={() => setFilterCategory(null)}
           />
