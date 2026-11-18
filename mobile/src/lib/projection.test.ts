@@ -5,12 +5,20 @@ const FROM = "2026-10-20";
 const TO = "2026-11-18"; // 30 días
 
 describe("projectCycle", () => {
-  it("día 1: elapsed=1, daysLeft=total-1, projected=spent*total", () => {
-    const p = projectCycle({ spent: 10000, from: FROM, to: TO, today: FROM });
+  it("día 1: muestra insuficiente → null (sin proyección)", () => {
+    expect(projectCycle({ spent: 50000, from: FROM, to: TO, today: FROM })).toBeNull();
+  });
+
+  it("día 2: muestra insuficiente → null (sin proyección)", () => {
+    expect(projectCycle({ spent: 50000, from: FROM, to: TO, today: "2026-10-21" })).toBeNull();
+  });
+
+  it("día 3 (borde exacto): proyecta gasto × total/3", () => {
+    const p = projectCycle({ spent: 30000, from: FROM, to: TO, today: "2026-10-22" });
     expect(p).not.toBeNull();
-    expect(p!.elapsedDays).toBe(1);
+    expect(p!.elapsedDays).toBe(3);
     expect(p!.totalDays).toBe(30);
-    expect(p!.daysLeft).toBe(29);
+    expect(p!.daysLeft).toBe(27);
     expect(p!.dailyAvg).toBe(10000);
     expect(p!.projected).toBe(300000);
   });
@@ -41,10 +49,11 @@ describe("projectCycle", () => {
     expect(projectCycle({ spent: 50000, from: FROM, to: TO, today: "2026-11-19" })).toBeNull();
   });
 
-  it("ciclo de 31 días (2026-10-20→2026-11-19) proyecta ×31", () => {
-    const p = projectCycle({ spent: 31000, from: "2026-10-20", to: "2026-11-19", today: "2026-10-20" });
+  it("ciclo de 31 días (2026-10-20→2026-11-19) día 3 proyecta ×31/3", () => {
+    const p = projectCycle({ spent: 93000, from: "2026-10-20", to: "2026-11-19", today: "2026-10-22" });
     expect(p).not.toBeNull();
     expect(p!.totalDays).toBe(31);
-    expect(p!.projected).toBe(31000 * 31);
+    expect(p!.elapsedDays).toBe(3);
+    expect(p!.projected).toBe(93000 * 31 / 3);
   });
 });

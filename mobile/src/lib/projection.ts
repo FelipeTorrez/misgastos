@@ -39,6 +39,9 @@ export function todayYMD(d: Date = new Date()): string {
 /**
  * Proyecta el gasto al cierre: promedio diario × días totales.
  * Devuelve null si today está fuera del rango [from, to] (ciclo futuro o cerrado).
+ * También devuelve null si elapsedDays < 3: con 1-2 días de muestra la
+ * proyección lineal es ruido (ej. un gasto grande el día 1 extrapola un
+ * cierre absurdo). Umbral mínimo de confianza = 3 días.
  */
 export function projectCycle({ spent, from, to, today }: ProjectionInput): Projection | null {
   const t = today ?? todayYMD();
@@ -52,6 +55,7 @@ export function projectCycle({ spent, from, to, today }: ProjectionInput): Proje
   const totalDays = Math.round((toMsVal - fromMs) / 86400000) + 1;
   const elapsedDays = Math.round((todayMs - fromMs) / 86400000) + 1;
   if (totalDays <= 0 || elapsedDays <= 0) return null;
+  if (elapsedDays < 3) return null;
 
   const safeSpent = Number.isFinite(spent) ? spent : 0;
   const daysLeft = totalDays - elapsedDays;
