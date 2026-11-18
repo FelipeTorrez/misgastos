@@ -154,7 +154,7 @@ export default function App() {
     else if (secondary === "ingest" || secondary === "probar") Object.assign(extra, { onReload: reload });
     content = <Sec {...extra} />;
   } else if (subTab === "categorias") {
-    content = <Categorias txs={txs} cats={cats} byCat={byCat} onSelectCategory={onSelectCategory} />;
+    content = <Categorias txs={txs} cats={cats} byCat={byCat} onSelectCategory={onSelectCategory} txsTruncated={txsTruncated} />;
   } else if (subTab === "movimientos") {
     content = (
       <Movimientos

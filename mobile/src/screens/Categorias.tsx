@@ -11,17 +11,19 @@ import { Amount } from "../components/ui/Amount";
 import { DonutChart } from "../components/ui/DonutChart";
 import { buildDonutSegments } from "../lib/donut";
 import { UNCATEGORIZED_KEY, withUncategorized } from "../lib/distribution";
+import { classificationAudit } from "../lib/audit";
 import { fmtCLP } from "../lib/format";
 
 export function toTitleCase(s: string) {
   return s.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
 }
 
-export function Categorias({ txs, cats, byCat, onSelectCategory }: {
+export function Categorias({ txs, cats, byCat, onSelectCategory, txsTruncated }: {
   txs: any[];
   cats: Category[];
   byCat: Record<string, number>;
   onSelectCategory?: (cat: Category) => void;
+  txsTruncated?: boolean;
 }) {
   const { byCat: fullByCat, uncategorized } = withUncategorized(byCat, txs);
   const total = Object.values(fullByCat).reduce((a, b) => a + b, 0);
@@ -39,6 +41,10 @@ export function Categorias({ txs, cats, byCat, onSelectCategory }: {
   const donutSegments = buildDonutSegments(donutItems);
   const byId = new Map(withSpent.map(c => [c.id, c]));
   const recent = txs.slice().sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+  const audit = classificationAudit(txs ?? []);
+  const porIA = audit.ai + audit.aiCache;
+  const sinIA = audit.fallback + audit.sinClasificar;
+  const pctIA = audit.total > 0 ? Math.round((porIA / audit.total) * 100) : 0;
 
   return (
     <ScrollView style={s.bg} contentContainerStyle={{ padding: 16, paddingBottom: 96 }}>
@@ -135,6 +141,27 @@ export function Categorias({ txs, cats, byCat, onSelectCategory }: {
         )}
       </Card>
 
+      <Card style={s.auditCard}>
+        <Text style={s.auditTitle}>Calidad de la clasificación</Text>
+        <View style={s.auditRow}>
+          <View style={s.auditCol}>
+            <Text style={s.auditNum}>{pctIA}%</Text>
+            <Text style={s.auditLabel}>Por IA</Text>
+          </View>
+          <View style={s.auditCol}>
+            <Text style={s.auditNum}>{sinIA}</Text>
+            <Text style={s.auditLabel}>Sin IA</Text>
+          </View>
+          <View style={s.auditCol}>
+            <Text style={s.auditNum}>{audit.requierenRevision}</Text>
+            <Text style={s.auditLabel}>Por revisar</Text>
+          </View>
+        </View>
+        {txsTruncated && (
+          <Text style={s.auditNote}>sobre los {audit.total} movimientos cargados</Text>
+        )}
+      </Card>
+
       <SectionHeader title="Últimos movimientos" />
       {recent.length === 0 ? (
         <Card><Text style={s.muted}>Aún no hay movimientos este mes.</Text></Card>
@@ -178,6 +205,13 @@ const s = StyleSheet.create({
   dot: { width: 10, height: 10, borderRadius: 5 },
   legendAmount: { color: C.text, fontSize: 12, marginLeft: "auto" },
   movCard: { flexDirection: "row", alignItems: "center", padding: 12 } as any,
+  auditCard: { padding: SP.md } as any,
+  auditTitle: { color: C.text, fontSize: 14, fontWeight: "700" },
+  auditRow: { flexDirection: "row", marginTop: 10 },
+  auditCol: { flex: 1, alignItems: "center" },
+  auditNum: { color: C.text, fontSize: 18, fontWeight: "800" },
+  auditLabel: { color: C.dim, fontSize: 11, marginTop: 2 },
+  auditNote: { color: C.faint, fontSize: 11, textAlign: "center", marginTop: 8 },
   movMerchant: { color: C.text, fontWeight: "600", fontSize: 14 },
   movMeta: { color: C.dim, fontSize: 12, marginTop: 2 },
 });
