@@ -36,6 +36,11 @@ function normalizeMerchant(m: string | null): string {
   return (m ?? "").toLowerCase().trim().replace(/\s+/g, " ");
 }
 
+/** T2: quita espacios, guiones y puntuación (solo quedan letras/números), lowercase. */
+export function squashMerchant(m: string | null | undefined): string {
+  return (m ?? "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+}
+
 function sameDay(a: string | null, b: string): boolean {
   if (!a) return false;
   const da = a.slice(0, 10);
@@ -53,27 +58,61 @@ function timeDiffMinutes(aTime: string | null | undefined, bDateIso: string): nu
   return Math.abs(ah * 60 + am - (bh * 60 + bm));
 }
 
+function timeDiffSeconds(aTime: string | null | undefined, bDateIso: string): number | null {
+  if (!aTime) return null;
+  const [ah, am] = aTime.split(":").map(Number);
+  // `bDateIso` es hora de pared etiquetada Z (ver header): se lee tal cual en UTC.
+  const d = new Date(bDateIso);
+  const bh = d.getUTCHours();
+  const bm = d.getUTCMinutes();
+  const bs = d.getUTCSeconds();
+  return Math.abs(ah * 3600 + am * 60 - (bh * 3600 + bm * 60 + bs));
+}
+
 export function isDuplicate(candidate: Candidate, existing: Existing[], opts?: { windowMinutes?: number }): Existing | null {
   const windowMinutes = opts?.windowMinutes ?? 60;
-  const candNorm = normalizeMerchant(candidate.merchant);
 
   for (const e of existing) {
     if (e.status === "duplicate") continue; // no comparar contra duplicados
     if (e.amount !== candidate.amount) continue;
     if (e.type !== candidate.type) continue;
     if (!sameDay(candidate.date, e.date)) continue;
+    // si tenemos hora, diferencia en minutos (T1/T2) y en segundos (T3)
+    const diff =
+      candidate.time && candidate.date ? timeDiffMinutes(candidate.time, e.date) : null;
+    const candNorm = normalizeMerchant(candidate.merchant);
     const eNorm = normalizeMerchant(e.merchant);
-    // merchant fuzzy: exact o contiene (Lider vs Lider Providencia)
-    const merchantMatch = candNorm === eNorm || (candNorm && eNorm && (eNorm.includes(candNorm) || candNorm.includes(eNorm)));
-    if (!merchantMatch) continue;
-    // si tenemos hora, verifica ventana
+    const hasMerchant = candNorm.length > 0 && eNorm.length > 0;
+    // T1 (actual): merchant exacto o contenido + ventana 60 min
+    // T2 (nuevo): merchant "squasheado" contenido (len >= 5) + ventana 15 min
+    if (hasMerchant) {
+      // merchant fuzzy: exact o contiene (Lider vs Lider Providencia)
+      const merchantMatch =
+        candNorm === eNorm ||
+        eNorm.includes(candNorm) ||
+        candNorm.includes(eNorm);
+      if (merchantMatch && (diff === null || diff <= windowMinutes)) return e;
+      const s1 = squashMerchant(candidate.merchant);
+      const s2 = squashMerchant(e.merchant);
+      if (
+        s1.length >= 5 &&
+        s2.length >= 5 &&
+        (s1.includes(s2) || s2.includes(s1)) &&
+        (diff === null || diff <= 15)
+      )
+        return e;
+    }
+    // T3 (nuevo): sin mirar merchant, |dt| <= 90 segundos.
+    // Dos compras distintas del mismo monto en 90s son improbables;
+    // el usuario puede desmarcar. Requiere hora en el candidato;
+    // sin hora no hay dt que verificar (no matchea).
+    // Si alguno de los dos merchants es null/vacío, solo aplica T3.
     if (candidate.time && candidate.date) {
-      const diff = timeDiffMinutes(candidate.time, e.date);
-      if (diff !== null && diff > windowMinutes) continue;
+      const sec = timeDiffSeconds(candidate.time, e.date);
+      if (sec !== null && sec <= 90) return e;
     }
     // si ambos tienen accountHint/account_id y son distintos, no es duplicado (cuentas distintas)
     // (opcional, por ahora no bloquea)
-    return e;
   }
   return null;
 }
