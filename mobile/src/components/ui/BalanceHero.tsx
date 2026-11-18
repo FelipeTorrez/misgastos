@@ -41,8 +41,8 @@ export function BalanceHero({ income, expense, balance, prevExpense, prevLabel, 
             </Text>
           )}
           {proj && range && (
-            <Text style={s.proj}>
-              Proyección al {shortTo(range.to)}: {fmtCLP(proj.projected)} · {fmtCLP(Math.round(proj.dailyAvg))}/día
+            <Text style={s.proj} numberOfLines={1} ellipsizeMode="tail">
+              Proyección {shortTo(range.to)} · {fmtCLP(proj.projected)}
             </Text>
           )}
         </View>
