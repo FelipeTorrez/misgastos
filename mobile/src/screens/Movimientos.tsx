@@ -2,6 +2,7 @@ import { View, Text, FlatList, ScrollView, StyleSheet, TextInput, TouchableOpaci
 import { useEffect, useState } from "react";
 import { fmtCLP, fmtDate, shortDate } from "../lib/format";
 import { filterTxs } from "../lib/search";
+import { isDescartado, splitDescartados } from "../lib/visibleTxs";
 import { API_URL } from "../lib/supabase";
 import { Category } from "../lib/categories";
 import { C, R } from "../theme/tokens";
@@ -35,6 +36,7 @@ export function Movimientos({ txs, truncated, limit, cats, month, filterCategory
   const [local, setLocal] = useState<any[]>([]);
   const [filter, setFilter] = useState<"all" | "pending" | "confirmed">("all");
   const [q, setQ] = useState("");
+  const [showDescartados, setShowDescartados] = useState(false);
   const [editingTx, setEditingTx] = useState<any>(null);
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
   const [savePref, setSavePref] = useState(true);
@@ -114,7 +116,9 @@ export function Movimientos({ txs, truncated, limit, cats, month, filterCategory
     }
   }
 
-  const filtered = local.filter(tx => {
+  const { visibles, descartados } = splitDescartados(local);
+  const base = showDescartados ? local : visibles;
+  const filtered = base.filter(tx => {
     if (filterCategory && tx.category_id !== filterCategory.id) return false;
     if (filter === "pending") return tx.status === "pending_review" || tx.status === "pending_ai";
     if (filter === "confirmed") return tx.status === "confirmed" || tx.status === "corrected";
@@ -124,7 +128,7 @@ export function Movimientos({ txs, truncated, limit, cats, month, filterCategory
   // complementa el aviso de truncado: solo busca dentro de los movimientos visibles.
   const searched = filterTxs(filtered, q);
   const searching = q.trim().length > 0;
-  const pendingCount = local.filter(tx => tx.status === "pending_review" || tx.status === "pending_ai").length;
+  const pendingCount = base.filter(tx => tx.status === "pending_review" || tx.status === "pending_ai").length;
   const isPending = (tx: any) => tx.status === "pending_review" || tx.status === "pending_ai";  const reviewReason = (tx: any): string | null => tx.review_reason ?? tx.metadata?.review_reason ?? null;
   const reviewLabel = (r: string | null) =>
     r === "payment_processor"
@@ -175,6 +179,13 @@ export function Movimientos({ txs, truncated, limit, cats, month, filterCategory
             </TouchableOpacity>
           )}
         </View>
+        {descartados.length > 0 && (
+          <TouchableOpacity onPress={() => setShowDescartados(v => !v)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={s.descartadosToggle}>
+              {showDescartados ? "Ocultar descartados" : `Ver descartados (${descartados.length})`}
+            </Text>
+          </TouchableOpacity>
+        )}
         {searching && <Text style={s.searchCount}>{searched.length} movimientos</Text>}
       </View>
 
@@ -199,7 +210,7 @@ export function Movimientos({ txs, truncated, limit, cats, month, filterCategory
                   <Text style={s.merchant} numberOfLines={1} ellipsizeMode="tail">{toTitleCase(item.merchant)}</Text>
                 </View>
                 <View style={s.metaRow}>
-                  {needsAction ? (
+                  {needsAction || (showDescartados && isDescartado(item)) ? (
                     <View style={{ flexShrink: 0 }}>
                       <StatusBadge status={item.status} />
                     </View>
@@ -208,6 +219,14 @@ export function Movimientos({ txs, truncated, limit, cats, month, filterCategory
                   )}
                   <Text style={s.meta} numberOfLines={1} ellipsizeMode="tail">{(item.counterparty ? `Recibido de ${item.counterparty}` : (cats.find(c => c.id === item.category_id)?.label ?? (item.type === "income" ? "Ingreso" : item.type === "transfer" ? "Transferencia" : "Sin categoría")))} · {shortDate(item.date)}</Text>
                 </View>
+                {showDescartados && item.status === "duplicate" && item.duplicate_of && (
+                  <Text style={s.duplicateOf} numberOfLines={1} ellipsizeMode="tail">
+                    {(() => {
+                      const orig = local.find(t => t.id === item.duplicate_of)?.merchant;
+                      return orig ? `Duplicado de ${toTitleCase(orig)}` : "Duplicado de otro movimiento";
+                    })()}
+                  </Text>
+                )}
                 {isPending(item) && reviewLabel(reviewReason(item)) && (
                   <Text style={s.reviewReason} numberOfLines={2} ellipsizeMode="tail">{reviewLabel(reviewReason(item))}</Text>
                 )}
@@ -315,6 +334,8 @@ const s = StyleSheet.create({
   searchBox: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10, backgroundColor: C.surfaceAlt, borderWidth: 1, borderColor: C.border, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
   searchInput: { flex: 1, color: C.text, fontSize: 14, padding: 0 },
   searchCount: { color: C.dim, fontSize: 12, marginTop: 6 },
+  descartadosToggle: { color: C.faint, fontSize: 12, marginTop: 6, textDecorationLine: "underline" },
+  duplicateOf: { color: C.faint, fontSize: 11, marginTop: 2 },
   toast: { position: "absolute", top: 14, left: 14, right: 14, backgroundColor: C.surface, borderWidth: 1, borderColor: C.border, padding: 14, borderRadius: R.lg, zIndex: 100 },
   toastText: { color: C.text, fontWeight: "700", textAlign: "center" },
   muted: { color: C.dim, textAlign: "center", marginTop: 40 },
