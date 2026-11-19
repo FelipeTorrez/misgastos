@@ -3,6 +3,46 @@ export const fmtCLP = (n: number) =>
 export const fmtDate = (iso: string) =>
   new Date(iso).toLocaleDateString("es-CL", { day: "2-digit", month: "2-digit", year: "numeric" });
 
+/** Día de pared "YYYY-MM-DD" de un `date` de transacción, distinguiendo
+ *  INSTANTE UTC real de HORA DE PARED por la FORMA del string (no por prefijo).
+ *
+ *  Productores reales:
+ *  - backend ingestion/routes.ts:331 escribe `${date}T${time}:00Z` (hora de pared)
+ *    solo cuando la notificación trae fecha u hora; si no trae ninguna escribe
+ *    `new Date().toISOString()` (instante UTC real, siempre con milisegundos).
+ *  - mobile escribe `T12:00:00Z` (hora de pared, sin milisegundos, segundos 00).
+ *
+ *  Criterio (la forma distingue porque `toISOString()` siempre emite `.sss`):
+ *  (a) /^\d{4}-\d{2}-\d{2}$/ → día tal cual;
+ *  (b) /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00(Z|\+00:00)$/ (sin milisegundos y con
+ *      segundos exactamente 00) → hora de pared: slice(0, 10);
+ *  (c) cualquier otra forma (milisegundos, offset distinto de +00:00,
+ *      segundos != 00) → instante real: YYYY-MM-DD en America/Santiago vía
+ *      Intl.DateTimeFormat('en-CA'), sin depender del TZ del proceso.
+ */
+export function wallYMD(iso: string): string | null {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00(Z|\+00:00)$/.test(iso)) return iso.slice(0, 10);
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Santiago",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+/** Fecha de pared "dd-mm-yyyy" para `date` de transacción (ver `wallYMD`).
+ *  `fmtDate` queda intacto solo para timestamps reales de recepción
+ *  (p. ej. rawEvent.received_at). */
+export function fmtWallDate(iso: string): string {
+  const ymd = wallYMD(iso);
+  if (!ymd) return fmtDate(iso);
+  const [y, m, d] = ymd.split("-");
+  return `${d}-${m}-${y}`;
+}
+
 /** Etiqueta de detalle de un presupuesto ("de $X · ...").
  * - cycle: "de $M · límite del ciclo (≈$/día)".
  * - partial con coveredDays: "de $M · C de T días (≈$/día)" dividiendo por coveredDays (NO por cycleN).
@@ -39,13 +79,15 @@ export function deltaPct(current: number, prev: number): number | null {
   return Math.round(((current - prev) / prev) * 100);
 }
 
-/** Fecha corta para la línea meta de Movimientos: "dd-mm" si es del año en curso, "dd-mm-yyyy" si no. */
+/** Fecha corta para la línea meta de Movimientos: "dd-mm" si es del año en curso, "dd-mm-yyyy" si no.
+ *  Usa el día de pared (`wallYMD`), no el día UTC ni el del TZ del proceso. */
 export function shortDate(iso: string, now: string | number | Date = new Date()): string {
-  const d = new Date(iso);
+  const ymd = wallYMD(iso);
   const ref = new Date(now);
-  if (Number.isNaN(d.getTime()) || Number.isNaN(ref.getTime())) return fmtDate(iso);
-  if (d.getFullYear() === ref.getFullYear()) {
-    return d.toLocaleDateString("es-CL", { day: "2-digit", month: "2-digit" }).replace(/\//g, "-");
+  if (!ymd || Number.isNaN(ref.getTime())) return fmtDate(iso);
+  const [y, m, d] = ymd.split("-");
+  if (Number(y) === ref.getFullYear()) {
+    return `${d}-${m}`;
   }
-  return d.toLocaleDateString("es-CL", { day: "2-digit", month: "2-digit", year: "numeric" }).replace(/\//g, "-");
+  return `${d}-${m}-${y}`;
 }

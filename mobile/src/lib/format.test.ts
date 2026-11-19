@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shortDate, deltaPct, fmtCLP, budgetDetailLabel } from "./format";
+import { shortDate, fmtWallDate, wallYMD, deltaPct, fmtCLP, budgetDetailLabel } from "./format";
 
 describe("shortDate", () => {
   it("mismo año → 'dd-mm' (5 chars)", () => {
@@ -8,6 +8,31 @@ describe("shortDate", () => {
 
   it("otro año → mantiene el año", () => {
     expect(shortDate("2025-11-15T12:00:00", new Date(2026, 2, 1))).toBe("15-11-2025");
+  });
+
+  it("instante UTC con milisegundos → día local de Chile (17-11, no 18-11)", () => {
+    // 2026-11-18T01:01:19.446Z = 17-11 22:01 en America/Santiago (UTC-3 en noviembre)
+    expect(shortDate("2026-11-18T01:01:19.446Z", new Date(2026, 5, 15))).toBe("17-11");
+  });
+
+  it("hora de pared T00:30:00Z → conserva el día escrito (19-11)", () => {
+    expect(shortDate("2026-11-19T00:30:00Z", new Date(2026, 5, 15))).toBe("19-11");
+  });
+
+  it("fecha pelada → ese día tal cual", () => {
+    expect(shortDate("2026-11-19", new Date(2026, 5, 15))).toBe("19-11");
+  });
+});
+
+describe("wallYMD / fmtWallDate", () => {
+  it("instante con milisegundos → día de Santiago", () => {
+    expect(wallYMD("2026-11-18T01:01:19.446Z")).toBe("2026-11-17");
+    expect(fmtWallDate("2026-11-18T01:01:19.446Z")).toBe("17-11-2026");
+  });
+
+  it("pared sin milisegundos y segundos 00 → prefijo tal cual", () => {
+    expect(wallYMD("2026-11-19T00:30:00Z")).toBe("2026-11-19");
+    expect(fmtWallDate("2026-11-19T00:30:00Z")).toBe("19-11-2026");
   });
 });
 
