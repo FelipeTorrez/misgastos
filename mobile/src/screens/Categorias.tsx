@@ -12,7 +12,7 @@ import { DonutChart } from "../components/ui/DonutChart";
 import { buildDonutSegments } from "../lib/donut";
 import { UNCATEGORIZED_KEY, withUncategorized } from "../lib/distribution";
 import { classificationAudit } from "../lib/audit";
-import { fmtCLP } from "../lib/format";
+import { fmtCLP, fmtWallDate } from "../lib/format";
 
 export function toTitleCase(s: string) {
   return s.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
@@ -174,7 +174,7 @@ export function Categorias({ txs, cats, byCat, onSelectCategory, txsTruncated }:
                 <CategoryCircle slug={cat?.slug} size={34} />
                 <View style={{ flex: 1, marginLeft: 10 }}>
                   <Text style={s.movMerchant}>{toTitleCase(t.merchant)}</Text>
-                  <Text style={s.movMeta}>{cat?.label ?? "Sin categoría"} · {new Date(t.date).toLocaleDateString("es-CL")}</Text>
+                  <Text style={s.movMeta}>{cat?.label ?? "Sin categoría"} · {fmtWallDate(t.date)}</Text>
                 </View>
                 <Amount value={t.amount} tone={t.type === "income" ? "income" : "expense"} size="md" />
               </Card>
