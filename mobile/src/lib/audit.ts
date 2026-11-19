@@ -63,3 +63,24 @@ export function classificationAudit(txs: AuditTx[]): ClassificationAudit {
     requierenRevision,
   };
 }
+
+/**
+ * Cola de revisión: lo que la IA clasificó dudoso.
+ * Incluye needsAudit(tx) o confianza baja, ordenado por
+ * confianza ascendente (null/ausente primero).
+ */
+export function reviewQueue<T extends AuditTx>(txs: T[]): { items: T[]; count: number } {
+  const list = Array.isArray(txs) ? txs : [];
+  const items = list.filter((t) => {
+    const n = norm(t);
+    return needsAudit(n) || confidenceBand(n.confidence) === "baja";
+  });
+  items.sort((a, b) => {
+    const ca = norm(a).confidence;
+    const cb = norm(b).confidence;
+    const va = typeof ca === "number" && Number.isFinite(ca) ? ca : -1;
+    const vb = typeof cb === "number" && Number.isFinite(cb) ? cb : -1;
+    return va - vb;
+  });
+  return { items, count: items.length };
+}

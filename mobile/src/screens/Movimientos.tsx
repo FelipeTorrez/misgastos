@@ -7,6 +7,7 @@ import { API_URL } from "../lib/supabase";
 import { Category } from "../lib/categories";
 import { C, R } from "../theme/tokens";
 import { needsAudit, provenanceLabel } from "../lib/classification";
+import { reviewQueue } from "../lib/audit";
 import { MIcon } from "../components/ui/MIcon";
 import { CategoryCircle } from "../components/ui/CategoryCircle";
 import { StatusBadge } from "../components/ui/StatusBadge";
@@ -34,7 +35,7 @@ export function Movimientos({ txs, truncated, limit, cats, month, filterCategory
   onRefresh?: () => void;
 }) {
   const [local, setLocal] = useState<any[]>([]);
-  const [filter, setFilter] = useState<"all" | "pending" | "confirmed">("all");
+  const [filter, setFilter] = useState<"all" | "pending" | "confirmed" | "review">("all");
   const [q, setQ] = useState("");
   const [showDescartados, setShowDescartados] = useState(false);
   const [editingTx, setEditingTx] = useState<any>(null);
@@ -127,6 +128,8 @@ export function Movimientos({ txs, truncated, limit, cats, month, filterCategory
   // La búsqueda por comercio filtra sobre la lista ya cargada (no dispara red);
   // complementa el aviso de truncado: solo busca dentro de los movimientos visibles.
   const searched = filterTxs(filtered, q);
+  const reviewCount = reviewQueue(base).count;
+  const displayed = filter === "review" ? reviewQueue(searched).items : searched;
   const searching = q.trim().length > 0;
   const pendingCount = base.filter(tx => tx.status === "pending_review" || tx.status === "pending_ai").length;
   const isPending = (tx: any) => tx.status === "pending_review" || tx.status === "pending_ai";  const reviewReason = (tx: any): string | null => tx.review_reason ?? tx.metadata?.review_reason ?? null;
@@ -143,10 +146,10 @@ export function Movimientos({ txs, truncated, limit, cats, month, filterCategory
 
       <View style={s.topBar}>
         <View style={s.filterRow}>
-          {(["all", "pending", "confirmed"] as const).map(f => (
+          {(["all", "pending", "confirmed", "review"] as const).map(f => (
             <TouchableOpacity key={f} style={[s.filterBtn, filter === f && s.filterActive]} onPress={() => setFilter(f)}>
               <Text style={[s.filterText, filter === f && s.filterTextActive]}>
-                {f === "all" ? "Todas" : f === "pending" ? `Pendientes (${pendingCount})` : "Confirmadas"}
+                {f === "all" ? "Todas" : f === "pending" ? `Pendientes (${pendingCount})` : f === "confirmed" ? "Confirmadas" : `Revisar (${reviewCount})`}
               </Text>
             </TouchableOpacity>
           ))}
@@ -186,17 +189,17 @@ export function Movimientos({ txs, truncated, limit, cats, month, filterCategory
             </Text>
           </TouchableOpacity>
         )}
-        {searching && <Text style={s.searchCount}>{searched.length} movimientos</Text>}
+        {searching && <Text style={s.searchCount}>{displayed.length} movimientos</Text>}
       </View>
 
       <FlatList
-        data={searched}
+        data={displayed}
         keyExtractor={i => i.id}
         contentContainerStyle={{ padding: 16, paddingBottom: 140 }}
         ListHeaderComponent={truncated ? (
           <Text style={s.truncatedBanner}>Mostrando los {limit ?? 100} movimientos más recientes de este periodo</Text>
         ) : null}
-        ListEmptyComponent={<Text style={s.muted}>{searching ? `Sin resultados para "${q.trim()}"` : filterCategory ? "Sin movimientos en esta categoría." : "Aún no hay movimientos este mes. Usa el botón +."}</Text>}
+        ListEmptyComponent={<Text style={s.muted}>{searching ? `Sin resultados para "${q.trim()}"` : filter === "review" ? "Nada por revisar." : filterCategory ? "Sin movimientos en esta categoría." : "Aún no hay movimientos este mes. Usa el botón +."}</Text>}
         renderItem={({ item }) => {
           const needsAction = item.status === "pending_review" || item.status === "pending_ai";
           return (
@@ -322,7 +325,7 @@ export function Movimientos({ txs, truncated, limit, cats, month, filterCategory
 
 const s = StyleSheet.create({
   topBar: { paddingHorizontal: 16, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: C.border },
-  filterRow: { flexDirection: "row", gap: 8 },
+  filterRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
   filterBtn: { backgroundColor: C.surfaceAlt, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16, borderWidth: 1, borderColor: C.border },
   filterActive: { backgroundColor: C.surface, borderColor: C.primary },
   filterText: { color: C.dim, fontSize: 12, fontWeight: "600" },
