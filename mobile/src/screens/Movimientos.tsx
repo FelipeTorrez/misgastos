@@ -5,7 +5,7 @@ import { filterTxs } from "../lib/search";
 import { isDescartado, splitDescartados } from "../lib/visibleTxs";
 import { API_URL } from "../lib/supabase";
 import { Category } from "../lib/categories";
-import { C, R } from "../theme/tokens";
+import { C, R, T } from "../theme/tokens";
 import { needsAudit, provenanceLabel } from "../lib/classification";
 import { reviewQueue } from "../lib/audit";
 import { MIcon } from "../components/ui/MIcon";
@@ -383,7 +383,7 @@ const s = StyleSheet.create({
   merchant: { color: C.text, fontWeight: "600", flex: 1, minWidth: 0 },
   meta: { color: C.dim, fontSize: 12, flex: 1, minWidth: 0 },
   reviewReason: { color: "#f59e0b", fontSize: 11, marginTop: 2 },
-  amount: { fontWeight: "800", flexShrink: 0 },
+  amount: { ...T.num, fontWeight: "800", flexShrink: 0 },
   confirmBtn: { backgroundColor: "#10b981", width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
   confirmBtnText: { color: "#fff", fontSize: 14, fontWeight: "700" },
   summary: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: C.surfaceAlt, borderWidth: 1, borderColor: C.border, padding: 12, borderRadius: R.md },

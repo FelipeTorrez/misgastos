@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, AppState } from "react-native";
 import { C } from "./src/theme/tokens";
 import { monthLabel, shiftMonth } from "./src/theme/tokens";
@@ -15,7 +15,8 @@ import { IASheet } from "./src/components/ui/IASheet";
 import { hasPermission, startListening, setApiUrl, flushQueue, resendActive } from "./src/native/NotificationListener";
 import { API_URL } from "./src/lib/supabase";
 import { useShellData, fetchSettings, saveSettings, Period, UserSettings } from "./src/lib/useShellData";
-import { currentCycle, DateRange, prevRange, rangeLabel } from "./src/lib/billingCycle";
+import { currentCycle, DateRange, prevRange, rangeLabel, daysInMonth } from "./src/lib/billingCycle";
+import { dailyExpenseSeries } from "./src/lib/sparkline";
 import { Categorias } from "./src/screens/Categorias";
 import { Movimientos } from "./src/screens/Movimientos";
 import { Presupuesto } from "./src/screens/Presupuesto";
@@ -141,6 +142,14 @@ export default function App() {
 
   const month = period.type === "month" ? period.month : period.from.slice(0, 7);
   const rangeActive = period.type === "range";
+
+  // Serie del sparkline del hero: días del periodo (ciclo o mes) ya transcurridos.
+  const dailyExpense = useMemo(() => {
+    if (period.type === "range") return dailyExpenseSeries(txs, { from: period.from, to: period.to }, { maxPoints: 20 });
+    const [y, m] = period.month.split("-").map(Number);
+    const to = `${period.month}-${String(daysInMonth(y!, m!)).padStart(2, "0")}`;
+    return dailyExpenseSeries(txs, { from: `${period.month}-01`, to }, { maxPoints: 20 });
+  }, [txs, period]);
   const prevLabel = period.type === "range"
     ? rangeLabel(prevRange(period.from, period.to))
     : monthLabel(shiftMonth(period.month, -1));
@@ -211,6 +220,7 @@ export default function App() {
             prevExpense={prevExpense}
             prevLabel={prevLabel}
             range={period.type === "range" ? { from: period.from, to: period.to } : null}
+            daily={dailyExpense}
             filterCategory={filterCategory}
             onClearFilter={() => setFilterCategory(null)}
           />

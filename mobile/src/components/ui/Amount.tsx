@@ -1,5 +1,5 @@
 import { Text, StyleSheet, TextStyle } from "react-native";
-import { C } from "../../theme/tokens";
+import { C, T } from "../../theme/tokens";
 import { fmtCLP } from "../../lib/format";
 
 type Tone = "auto" | "income" | "expense" | "neutral";
@@ -26,7 +26,7 @@ export function Amount({ value, tone = "neutral", size = "md", signed, showSign 
   const sign = forceSign ? (value > 0 ? "+" : value < 0 ? "-" : "") : t === "income" ? "+" : "";
 
   return (
-    <Text style={[sizes[size], { color }]}>
+    <Text style={[sizes[size], T.num, { color }]}>
       {!!sign && <Text style={s.sym}>{sign}</Text>}
       {fmtCLP(Math.abs(value))}
     </Text>

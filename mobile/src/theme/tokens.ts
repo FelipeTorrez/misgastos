@@ -29,6 +29,8 @@ export const T = {
   body: { fontSize: 14, color: C.text },
   caption: { fontSize: 12, color: C.dim },
   label: { fontSize: 11, fontWeight: "600" as const, color: C.faint, letterSpacing: 0.6, textTransform: "uppercase" as const },
+  /** Cifras tabulares: todos los dígitos miden igual → las columnas de montos no bailan. */
+  num: { fontVariant: ["tabular-nums"] as ("tabular-nums")[] },
 };
 
 /** Estados de barra de progreso según % de presupuesto */
