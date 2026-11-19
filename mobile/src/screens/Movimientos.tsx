@@ -1,6 +1,6 @@
 import { View, Text, FlatList, ScrollView, StyleSheet, TextInput, TouchableOpacity, Pressable } from "react-native";
 import { useEffect, useState } from "react";
-import { fmtCLP, fmtDate, shortDate } from "../lib/format";
+import { fmtCLP, fmtDate, fmtWallDate, shortDate } from "../lib/format";
 import { filterTxs } from "../lib/search";
 import { isDescartado, splitDescartados } from "../lib/visibleTxs";
 import { API_URL } from "../lib/supabase";
@@ -256,7 +256,7 @@ export function Movimientos({ txs, truncated, limit, cats, month, filterCategory
             <View style={s.summary}>
               <View style={{ flex: 1 }}>
                 <Text style={s.summaryMerchant} numberOfLines={1} ellipsizeMode="tail">{toTitleCase(editingTx.merchant)}</Text>
-                <Text style={s.summaryMeta}>{fmtDate(editingTx.date)} · {fmtCLP(editingTx.amount)}</Text>
+                <Text style={s.summaryMeta}>{fmtWallDate(editingTx.date)} · {fmtCLP(editingTx.amount)}</Text>
               </View>
               <View style={s.summaryBadges}>
                 <StatusBadge status={editingTx.status} />
