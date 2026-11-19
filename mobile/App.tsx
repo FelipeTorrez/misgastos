@@ -8,6 +8,7 @@ import { PeriodPager } from "./src/components/ui/PeriodPager";
 import { DateRangePicker } from "./src/components/ui/DateRangePicker";
 import { CyclePrompt } from "./src/components/ui/CyclePrompt";
 import { BalanceHero } from "./src/components/ui/BalanceHero";
+import { ErrorState } from "./src/components/ui/ErrorState";
 import { AddMoveModal } from "./src/components/ui/AddMoveModal";
 import { FabMenu } from "./src/components/ui/FabMenu";
 import { IASheet } from "./src/components/ui/IASheet";
@@ -59,7 +60,7 @@ export default function App() {
   const [addType, setAddType] = useState<"expense" | "income">("expense");
   const [filterCategory, setFilterCategory] = useState<{ id: string; label: string; slug: string } | null>(null);
 
-  const { balance, prevExpense, txs, txsTruncated, txsLimit, budgets, cats, byCat, reload } = useShellData(period);
+  const { balance, prevExpense, txs, txsTruncated, txsLimit, budgets, cats, byCat, error, errorMessage, reload } = useShellData(period);
   const reloadRef = useRef(reload);
   useEffect(() => { reloadRef.current = reload; }, [reload]);
 
@@ -222,6 +223,8 @@ export default function App() {
           </View>
         </View>
       )}
+
+      {error && !secondary && <ErrorState message={errorMessage} onRetry={reload} />}
 
       <View style={{ flex: 1 }}>{content}</View>
 
