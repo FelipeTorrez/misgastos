@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Pressable } from "react-native";
-import { C, R, shiftMonth, monthLabel } from "../theme/tokens";
+import { C, R, shiftMonth, monthLabel, T } from "../theme/tokens";
 import { Budget } from "../lib/useShellData";
 import { Category } from "../lib/categories";
 import { CategoryCircle } from "../components/ui/CategoryCircle";
@@ -282,7 +282,7 @@ const s = StyleSheet.create({
   swipeStatic: { marginBottom: 8, borderRadius: 12, overflow: "hidden" },
   rowHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   name: { color: C.text, fontWeight: "700", fontSize: 15 },
-  spent: { color: C.text, fontWeight: "800", fontSize: 14 },
+  spent: { ...T.num, color: C.text, fontWeight: "800", fontSize: 14 },
   limit: { color: C.dim, fontSize: 12, marginTop: 1 },
   empty: { alignItems: "center", paddingVertical: 32, paddingHorizontal: 16, gap: 6 },
   emptyIcon: { width: 64, height: 64, borderRadius: 999, backgroundColor: C.primarySoft, alignItems: "center", justifyContent: "center", marginBottom: 6 },
