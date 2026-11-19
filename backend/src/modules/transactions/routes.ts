@@ -40,6 +40,7 @@ export const PatchTx = z.object({
   confidence: z.number().min(0).max(1).optional(),
   account_id: z.string().uuid().nullable().optional(),
   date: DateTimeQuery.optional(),
+  duplicate_of: z.string().nullable().optional(),
 }).strict();
 
 export async function transactionRoutes(app: FastifyInstance) {
@@ -145,6 +146,11 @@ export async function transactionRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.status(400).send(parsed.error.flatten());
     const patchData: any = { ...parsed.data };
     patchData.status = patchData.status ?? "corrected";
+    // Restaurar un falso duplicado: si vuelve a confirmed/corrected deja de
+    // apuntar a otro movimiento (la dedup lo había ocultado del balance).
+    if (patchData.status === "confirmed" || patchData.status === "corrected") {
+      patchData.duplicate_of = null;
+    }
     if (isMockMode) {
       const tx = mockStore.updateTransaction(userId, req.params.id, patchData);
       if (!tx) return reply.status(404).send({ error: "transaction not found" });

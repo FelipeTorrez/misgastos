@@ -100,6 +100,26 @@ export function Movimientos({ txs, truncated, limit, cats, month, filterCategory
     }
   }
 
+  // Recupera un falso duplicado/descartado: la dedup lo sacó del balance por
+  // error y queda oculto en "Ver descartados". Vuelve a confirmed sin vínculo.
+  async function restoreTx() {
+    if (!editingTx) return;
+    try {
+      const res = await fetch(`${API_URL}/v1/transactions/${editingTx.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "confirmed" }),
+      }).catch(() => null);
+      if (!res || !res.ok) { notify("No se pudo recuperar el movimiento"); return; }
+      setLocal(prev => prev.map(t => (t.id === editingTx.id ? { ...t, status: "confirmed", duplicate_of: null } : t)));
+      setEditingTx(null);
+      onRefresh?.();
+      notify("Movimiento recuperado");
+    } catch {
+      notify("Error de red");
+    }
+  }
+
   async function saveCategory() {
     if (!editingTx || !selectedCat) { notify("Elige una categoría"); return; }
     try {
@@ -308,6 +328,13 @@ export function Movimientos({ txs, truncated, limit, cats, month, filterCategory
               </View>
             )}
 
+            {(editingTx.status === "duplicate" || editingTx.status === "ignored") && (
+              <TouchableOpacity style={s.restoreBtn} onPress={restoreTx} activeOpacity={0.8}>
+                <MIcon name="backup-restore" size={16} color={C.primary} />
+                <Text style={s.restoreBtnText}>No era duplicado · recuperarlo</Text>
+              </TouchableOpacity>
+            )}
+
             <View style={s.btnRow}>
               <TouchableOpacity style={[s.btn, { flex: 1, backgroundColor: C.surfaceAlt }]} onPress={() => setEditingTx(null)}>
                 <Text style={s.btnText}>Cancelar</Text>
@@ -384,6 +411,8 @@ const s = StyleSheet.create({
   rawSubject: { color: C.text, fontWeight: "700", fontSize: 13 },
   rawContent: { color: C.text, fontSize: 12, lineHeight: 17 },
   rawToggle: { color: C.primary, fontWeight: "700", fontSize: 12, marginTop: 2 },
+  restoreBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 14, padding: 12, borderRadius: R.md, backgroundColor: C.surfaceAlt, borderWidth: 1, borderColor: C.primary },
+  restoreBtnText: { color: C.primary, fontWeight: "700", fontSize: 13 },
   btnRow: { flexDirection: "row", gap: 10, marginTop: 16 },
   btn: { padding: 14, borderRadius: R.md, alignItems: "center" },
   btnText: { color: C.text, fontWeight: "700" },
