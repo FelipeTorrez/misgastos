@@ -42,6 +42,8 @@ export function todayYMD(d: Date = new Date()): string {
  * También devuelve null si elapsedDays < 3: con 1-2 días de muestra la
  * proyección lineal es ruido (ej. un gasto grande el día 1 extrapola un
  * cierre absurdo). Umbral mínimo de confianza = 3 días.
+ * Y devuelve null si elapsedDays >= totalDays: con el ciclo completo (último
+ * día o pasado) la proyección no aporta, el total ya es el cierre.
  */
 export function projectCycle({ spent, from, to, today }: ProjectionInput): Projection | null {
   const t = today ?? todayYMD();
@@ -56,6 +58,8 @@ export function projectCycle({ spent, from, to, today }: ProjectionInput): Proje
   const elapsedDays = Math.round((todayMs - fromMs) / 86400000) + 1;
   if (totalDays <= 0 || elapsedDays <= 0) return null;
   if (elapsedDays < 3) return null;
+  // Ciclo completo: la proyección repetiría el total (ruido en el hero).
+  if (elapsedDays >= totalDays) return null;
 
   const safeSpent = Number.isFinite(spent) ? spent : 0;
   const daysLeft = totalDays - elapsedDays;

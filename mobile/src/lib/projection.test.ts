@@ -33,12 +33,18 @@ describe("projectCycle", () => {
     expect(p!.projected).toBe(300000);
   });
 
-  it("último día: daysLeft=0, projected=spent", () => {
-    const p = projectCycle({ spent: 280000, from: FROM, to: TO, today: TO });
+  it("penúltimo día (elapsed = total-1): todavía proyecta", () => {
+    const p = projectCycle({ spent: 290000, from: FROM, to: TO, today: "2026-11-17" });
     expect(p).not.toBeNull();
-    expect(p!.elapsedDays).toBe(30);
-    expect(p!.daysLeft).toBe(0);
-    expect(p!.projected).toBe(280000);
+    expect(p!.elapsedDays).toBe(29);
+    expect(p!.totalDays).toBe(30);
+    expect(p!.daysLeft).toBe(1);
+    expect(p!.dailyAvg).toBe(10000);
+    expect(p!.projected).toBe(300000);
+  });
+
+  it("último día (elapsed = total): ciclo cerrado → null (sin proyección)", () => {
+    expect(projectCycle({ spent: 280000, from: FROM, to: TO, today: TO })).toBeNull();
   });
 
   it("today antes del ciclo → null (sin proyección)", () => {
@@ -47,6 +53,10 @@ describe("projectCycle", () => {
 
   it("today después del ciclo → null (ciclo cerrado)", () => {
     expect(projectCycle({ spent: 50000, from: FROM, to: TO, today: "2026-11-19" })).toBeNull();
+  });
+
+  it("ciclo pasado completo → null (sin proyección)", () => {
+    expect(projectCycle({ spent: 250000, from: "2026-09-20", to: "2026-10-18", today: "2026-10-25" })).toBeNull();
   });
 
   it("ciclo de 31 días (2026-10-20→2026-11-19) día 3 proyecta ×31/3", () => {
