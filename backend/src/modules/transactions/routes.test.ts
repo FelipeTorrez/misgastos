@@ -240,4 +240,21 @@ describe("PATCH /v1/transactions/:id — whitelist zod", () => {
     expect(res.statusCode).toBe(400);
     expect(db.transactions[0].status).toBe("pending_review");
   });
+
+  it("restaura un falso duplicado: duplicate → confirmed con duplicate_of null", async () => {
+    db.transactions = [
+      { id: "orig", user_id: "u1", date: "2026-03-10", amount: 1000, type: "expense", merchant: "Lider", status: "confirmed" },
+      { id: "dup", user_id: "u1", date: "2026-03-10", amount: 1000, type: "expense", merchant: "Jumbo", status: "duplicate", duplicate_of: "orig" },
+    ];
+    const app = await buildApp();
+    const res = await app.inject({ method: "PATCH", url: "/v1/transactions/dup", payload: { status: "confirmed" } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe("confirmed");
+    expect(res.json().duplicate_of).toBeNull();
+    expect(db.transactions[1].status).toBe("confirmed");
+    expect(db.transactions[1].duplicate_of).toBeNull();
+    const list = await app.inject({ method: "GET", url: "/v1/transactions?month=2026-03" });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().find((t: any) => t.id === "dup")).toMatchObject({ status: "confirmed" });
+  });
 });
