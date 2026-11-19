@@ -39,38 +39,13 @@ export function deltaPct(current: number, prev: number): number | null {
   return Math.round(((current - prev) / prev) * 100);
 }
 
-/** YYYY-MM-DD en semántica "hora de pared": transactions.date se guarda como hora
- * local etiquetada Z, así que el prefijo del string YA es el día del gasto.
- * Solo se convierte con Date cuando el string no trae prefijo YYYY-MM-DD.
- * Retorna null si no se puede extraer ni convertir una fecha. */
-export function wallYMD(iso: string): string | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
-  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  const mo = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${mo}-${day}`;
-}
-
-/** Fecha de un gasto en semántica hora de pared ("dd-mm-aaaa").
- * fmtDate queda intacto para timestamps reales (received_at de raw_events). */
-export function fmtWallDate(iso: string): string {
-  const ymd = wallYMD(iso);
-  if (!ymd) return fmtDate(iso);
-  const [y, m, d] = ymd.split("-");
-  return `${d}-${m}-${y}`;
-}
-
-/** Fecha corta para la línea meta de Movimientos: "dd-mm" si es del año en curso, "dd-mm-yyyy" si no.
- * Usa semántica hora de pared (wallYMD), no new Date(iso), para no correr el día por zona horaria. */
+/** Fecha corta para la línea meta de Movimientos: "dd-mm" si es del año en curso, "dd-mm-yyyy" si no. */
 export function shortDate(iso: string, now: string | number | Date = new Date()): string {
-  const ymd = wallYMD(iso);
+  const d = new Date(iso);
   const ref = new Date(now);
-  if (!ymd || Number.isNaN(ref.getTime())) return fmtDate(iso);
-  const [y, m, d] = ymd.split("-");
-  if (ref.getFullYear() === Number(y)) {
-    return `${d}-${m}`;
+  if (Number.isNaN(d.getTime()) || Number.isNaN(ref.getTime())) return fmtDate(iso);
+  if (d.getFullYear() === ref.getFullYear()) {
+    return d.toLocaleDateString("es-CL", { day: "2-digit", month: "2-digit" }).replace(/\//g, "-");
   }
-  return `${d}-${m}-${y}`;
+  return d.toLocaleDateString("es-CL", { day: "2-digit", month: "2-digit", year: "numeric" }).replace(/\//g, "-");
 }

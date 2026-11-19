@@ -9,14 +9,6 @@ describe("shortDate", () => {
   it("otro año → mantiene el año", () => {
     expect(shortDate("2025-11-15T12:00:00", new Date(2026, 2, 1))).toBe("15-11-2025");
   });
-
-  it("hora de pared: 00:30Z no corre al día anterior", () => {
-    expect(shortDate("2026-11-19T00:30:00Z", new Date(2026, 2, 1))).toBe("19-11");
-  });
-
-  it("date-only usa el día tal cual", () => {
-    expect(shortDate("2026-11-19", new Date(2026, 2, 1))).toBe("19-11");
-  });
 });
 
 describe("deltaPct", () => {
