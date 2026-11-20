@@ -65,18 +65,32 @@ async function processIngestion(data: any, userId: string) {
   }
 
   // RawEvent inmutable §12 — incluye metadata guard/allowlist para auditoría
-  let rawEventId: string;
   let rawEvent: any;
   const rawMetadata: any = { normalized, allowlist_hit: senderAllowlisted, sender };
   if (isMockMode) {
     rawEvent = mockStore.insertRawEvent(userId, { source, external_id: external_id ?? null, sender: sender ?? null, subject: subject ?? null, raw_content, received_at: received_at ?? new Date().toISOString(), metadata: rawMetadata, mocked: true });
-    rawEventId = rawEvent.id;
   } else {
     const { data: raw, error } = await supabase.from("raw_events").insert({ user_id: userId, source, external_id: external_id ?? null, sender: sender ?? null, subject: subject ?? null, raw_content, received_at: received_at ?? new Date().toISOString(), metadata: rawMetadata }).select().single();
     if (error) return { status: 500, body: { error: `raw_events insert: ${error.message}` } };
     rawEvent = raw;
-    rawEventId = raw.id;
   }
+
+  return ingestFromRaw(userId, rawEvent);
+}
+
+/**
+ * Tramo posterior al guardado del raw_event: parser → reglas → IA → dedup →
+ * transaction. Reutilizable por POST /v1/raw-events/:id/reprocess sin
+ * re-insertar el raw_event ni repetir la idempotencia por external_id.
+ */
+async function ingestFromRaw(userId: string, rawEvent: any) {
+  const rawEventId: string = rawEvent.id;
+  const sender: string | null = rawEvent.sender ?? null;
+  const rawContent: string = rawEvent.raw_content ?? "";
+  const p = parseEmail(rawContent);
+  const rawMetadata: any = rawEvent.metadata ?? {};
+  const normalized = typeof rawMetadata.normalized === "string" ? rawMetadata.normalized : normalizeForAI(rawContent);
+  const senderAllowlisted = typeof rawMetadata.allowlist_hit === "boolean" ? rawMetadata.allowlist_hit : allowlistHit(sender);
 
   let finalMerchant = p.merchant ?? (p.operation === "transfer" ? "Transferencia" : "Desconocido");
   let finalCategorySlugOrId: string | null = null;
@@ -148,11 +162,13 @@ async function processIngestion(data: any, userId: string) {
       // Guard: si IA dice no es transacción, no continuar a insert
       if (ai && ai.is_transaction === false) {
         // Actualizar raw metadata con guard result (best effort)
+        const guardMetadata = { ...rawMetadata, normalized, allowlist_hit: senderAllowlisted, guard: { is_transaction: false, reason: ai.reason, confidence: ai.confidence } };
         if (!isMockMode) {
-          await supabase.from("raw_events").update({ metadata: { ...rawMetadata, guard: { is_transaction: false, reason: ai.reason, confidence: ai.confidence } } }).eq("id", rawEventId);
+          await supabase.from("raw_events").update({ metadata: guardMetadata }).eq("id", rawEventId);
         } else {
-          mockStore.updateRawEvent(rawEventId, { metadata: { ...rawMetadata, guard: { is_transaction: false, reason: ai.reason } } });
+          mockStore.updateRawEvent(rawEventId, { metadata: guardMetadata });
         }
+        rawEvent.metadata = guardMetadata;
         return {
           status: 200,
           body: {
@@ -360,6 +376,29 @@ async function processIngestion(data: any, userId: string) {
   };
 }
 
+/** raw_event_ids ya vinculados a una transacción (para el filtro pending). */
+async function linkedRawEventIds(userId: string, ids: string[]): Promise<Set<string>> {
+  if (!ids.length) return new Set();
+  try {
+    const builder: any = supabase.from("transactions").select("raw_event_id").eq("user_id", userId);
+    const res = typeof builder.in === "function" ? await builder.in("raw_event_id", ids) : await builder.limit(500);
+    return new Set(((res?.data ?? []) as any[]).map(t => t.raw_event_id).filter(Boolean));
+  } catch {
+    return new Set();
+  }
+}
+
+async function markReprocessed(rawEvent: any, at: string) {
+  const metadata = { ...(rawEvent.metadata ?? {}), reprocessed_at: at };
+  rawEvent.metadata = metadata;
+  if (isMockMode) {
+    mockStore.updateRawEvent(rawEvent.id, { metadata });
+    return;
+  }
+  const { error } = await supabase.from("raw_events").update({ metadata }).eq("id", rawEvent.id);
+  if (error) console.error("reprocess metadata:", error.message);
+}
+
 export async function ingestionRoutes(app: FastifyInstance) {
   app.post("/v1/ingestion/email", async (req, reply) => {
     const userId = getUserId(req);
@@ -385,6 +424,20 @@ export async function ingestionRoutes(app: FastifyInstance) {
     let offset = Number.parseInt(String(q.offset ?? "0"), 10);
     if (!Number.isFinite(offset)) offset = 0;
     offset = Math.max(0, Math.floor(offset));
+    const pendingOnly = String(q.pending ?? "") === "1" || String(q.pending ?? "").toLowerCase() === "true";
+    if (isMockMode) {
+      return mockStore.listRawEvents(userId, { limit, offset, pending: pendingOnly });
+    }
+    if (pendingOnly) {
+      // metadata.guard es JSONB: el filtro se resuelve en memoria sobre los
+      // raw_events más recientes y luego se aplica limit/offset.
+      const all: any = supabase.from("raw_events").select("*").eq("user_id", userId).order("received_at", { ascending: false });
+      const { data } = typeof all.range === "function" ? await all.range(0, 499) : await all.limit(500);
+      const rows = ((data ?? []) as any[]);
+      const linked = await linkedRawEventIds(userId, rows.map(r => r.id));
+      const pending = rows.filter(r => r?.metadata?.guard?.is_transaction !== false && !linked.has(r.id));
+      return pending.slice(offset, offset + limit);
+    }
     const builder: any = supabase.from("raw_events").select("*").eq("user_id", userId).order("received_at", { ascending: false });
     if (typeof builder.range === "function") {
       const { data } = await builder.range(offset, offset + limit - 1);
@@ -392,5 +445,36 @@ export async function ingestionRoutes(app: FastifyInstance) {
     }
     const { data } = await builder.limit(offset + limit);
     return ((data ?? []) as any[]).slice(offset, offset + limit);
+  });
+  app.post("/v1/raw-events/:id/reprocess", async (req: any, reply) => {
+    const userId = getUserId(req);
+    const id = String(req.params?.id ?? "");
+    let rawEvent: any = null;
+    let existing: any = null;
+    if (isMockMode) {
+      rawEvent = mockStore.getRawEvent(id, userId);
+      existing = mockStore.listTransactions(userId, { limit: 10000 }).find(t => t.raw_event_id === id) ?? null;
+    } else {
+      const { data, error } = await supabase.from("raw_events").select("*").eq("id", id).eq("user_id", userId).limit(1);
+      if (error) return reply.status(500).send({ error: `raw_events lookup: ${error.message}` });
+      rawEvent = ((data ?? []) as any[])[0] ?? null;
+      if (rawEvent) {
+        const { data: txs } = await supabase.from("transactions").select("*").eq("user_id", userId).eq("raw_event_id", id).limit(1);
+        existing = ((txs ?? []) as any[])[0] ?? null;
+      }
+    }
+    if (!rawEvent) return reply.status(404).send({ error: "raw_event not found" });
+    if (existing) return reply.status(200).send({ already: true, raw_event_id: id, transaction: existing });
+    const result = await ingestFromRaw(userId, rawEvent);
+    if (result.status >= 500) return reply.status(result.status).send(result.body);
+    const transaction = (result.body as any)?.transaction ?? null;
+    const reprocessedAt = new Date().toISOString();
+    await markReprocessed(rawEvent, reprocessedAt);
+    if (!transaction) {
+      // Sigue sin gasto: 422 con la razón para que el cliente pueda mostrarla.
+      const reason = (result.body as any)?.next ?? "no transaction created";
+      return reply.status(422).send({ ...(result.body as any), raw_event_id: id, reprocessed_at: reprocessedAt, error: reason });
+    }
+    return reply.status(200).send({ ...(result.body as any), raw_event_id: id, reprocessed_at: reprocessedAt, reprocessed: true });
   });
 }

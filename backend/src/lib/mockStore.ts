@@ -202,6 +202,23 @@ export const mockStore = {
     this._persist();
     return row;
   },
+  /**
+   * Auditoría raw_events (orden recibido desc). pending=true excluye los que
+   * ya tienen transacción vinculada y los descartados por el guard de IA.
+   */
+  listRawEvents(userId: string, opts?: { limit?: number; offset?: number; pending?: boolean }) {
+    const limit = Math.max(1, Math.min(500, opts?.limit ?? 50));
+    const offset = Math.max(0, opts?.offset ?? 0);
+    let rows = this.rawEvents.filter(r => !r.user_id || r.user_id === userId);
+    if (opts?.pending) {
+      const linked = new Set(
+        this.transactions.filter(t => t.user_id === userId).map(t => t.raw_event_id).filter(Boolean),
+      );
+      rows = rows.filter(r => r.metadata?.guard?.is_transaction !== false && !linked.has(r.id));
+    }
+    rows = rows.sort((a, b) => String(b.received_at ?? "").localeCompare(String(a.received_at ?? "")));
+    return rows.slice(offset, offset + limit);
+  },
 
   // Transactions
   getTransaction(userId: string, txId: string) {
