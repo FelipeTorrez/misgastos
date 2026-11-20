@@ -13,6 +13,11 @@ const CreateBudget = z.object({
   period: z.enum(["monthly", "cycle"]).default("monthly")
 });
 
+const CarryOver = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), // inicio del ciclo nuevo
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+}).refine((d) => d.from <= d.to, { message: "from must be <= to", path: ["from"] });
+
 export async function budgetRoutes(app: FastifyInstance) {
   // Lista presupuestos del mes (o de un rango prorrateado) con spent calculado
   app.get("/v1/budgets", async (req: any, reply: any) => {
@@ -39,34 +44,8 @@ export async function budgetRoutes(app: FastifyInstance) {
         cycleBs = bs ?? [];
       }
 
-      // Ciclo nuevo sin límites: heredar los del ciclo anterior (eje 20→20).
-      // Idempotente: en el siguiente GET ya existen filas para `from`, así que
-      // no se vuelve a insertar; un límite borrado no reaparece.
-      let carriedOver = false;
-      if (cycleBs.length === 0) {
-        const prevStart = shiftMonths(from, -1);
-        let prevBs: any[];
-        if (isMockMode) {
-          prevBs = mockStore.listBudgets(userId, prevStart).filter(b => b.period === "cycle");
-        } else {
-          const { data: bs } = await supabase.from("budgets").select("*").eq("user_id", userId).eq("month", prevStart).eq("period", "cycle");
-          prevBs = bs ?? [];
-        }
-        const plan = planCarryOver(prevBs, cycleBs, from);
-        if (plan.length > 0) {
-          if (isMockMode) {
-            for (const row of plan) mockStore.upsertBudget(userId, row);
-            cycleBs = mockStore.listBudgets(userId, from).filter(b => b.period === "cycle");
-          } else {
-            for (const row of plan) {
-              await supabase.from("budgets").insert({ ...row, user_id: userId });
-            }
-            const { data: bs } = await supabase.from("budgets").select("*, categories(name, slug)").eq("user_id", userId).eq("month", from).eq("period", "cycle");
-            cycleBs = bs ?? [];
-          }
-          carriedOver = cycleBs.length > 0;
-        }
-      }
+      // GET solo lectura: si el ciclo nuevo aún no tiene límites se devuelve [].
+      // Heredar del ciclo anterior es una acción explícita (POST /v1/budgets/carry-over).
 
       // spent: gasto real dentro del rango (con fecha para el prorrateo por tramo del fallback)
       let rangeTxs: any[];
@@ -113,7 +92,6 @@ export async function budgetRoutes(app: FastifyInstance) {
             month: from,
             period: "cycle",
             partial: false,
-            carried_over: carriedOver,
             range: { from, to },
           };
         });
@@ -256,6 +234,55 @@ export async function budgetRoutes(app: FastifyInstance) {
     const { data, error } = await supabase.from("budgets").insert({ ...parsed.data, month: monthNorm, user_id: userId }).select().single();
     if (error) return reply.status(400).send({ error: error.message });
     return reply.status(201).send(data);
+  });
+
+  // Herencia explícita de límites de ciclo: copia los del ciclo anterior (from - 1 mes)
+  // que aún no existan en `from`. Idempotente: una segunda llamada crea 0 filas.
+  app.post("/v1/budgets/carry-over", async (req: any, reply: any) => {
+    const userId = getUserId(req);
+    const parsed = CarryOver.safeParse(req.body ?? {});
+    if (!parsed.success) return reply.status(400).send(parsed.error.flatten());
+    const { from } = parsed.data;
+    const prevStart = shiftMonths(from, -1);
+
+    let prevBs: any[];
+    let currentBs: any[];
+    if (isMockMode) {
+      prevBs = mockStore.listBudgets(userId, prevStart).filter(b => b.period === "cycle");
+      currentBs = mockStore.listBudgets(userId, from).filter(b => b.period === "cycle");
+    } else {
+      const prevRes = await supabase.from("budgets").select("*").eq("user_id", userId).eq("month", prevStart).eq("period", "cycle");
+      if (prevRes.error) return reply.status(500).send({ error: prevRes.error.message });
+      prevBs = prevRes.data ?? [];
+      const curRes = await supabase.from("budgets").select("*").eq("user_id", userId).eq("month", from).eq("period", "cycle");
+      if (curRes.error) return reply.status(500).send({ error: curRes.error.message });
+      currentBs = curRes.data ?? [];
+    }
+
+    const plan = planCarryOver(prevBs, currentBs, from);
+    let created = 0;
+    for (const row of plan) {
+      if (isMockMode) {
+        mockStore.upsertBudget(userId, row);
+      } else {
+        const { error } = await supabase.from("budgets").insert({ ...row, user_id: userId });
+        if (error) return reply.status(500).send({ error: error.message, created });
+      }
+      created++;
+    }
+
+    let budgets: any[];
+    if (isMockMode) {
+      budgets = mockStore.listBudgets(userId, from).filter(b => b.period === "cycle");
+    } else {
+      const { data, error } = await supabase.from("budgets").select("*, categories(name, slug)").eq("user_id", userId).eq("month", from).eq("period", "cycle");
+      if (error) return reply.status(500).send({ error: error.message, created });
+      budgets = data ?? [];
+    }
+
+    // skipped = límites del ciclo anterior que ya existían en `from` (o inválidos).
+    const skipped = Math.max(0, prevBs.length - created);
+    return { created, skipped, budgets };
   });
 
   app.delete("/v1/budgets/:id", async (req: any, reply) => {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Pressable } from "react-native";
 import { C, R, shiftMonth, monthLabel, T } from "../theme/tokens";
 import { Budget } from "../lib/useShellData";
@@ -25,6 +25,7 @@ export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive, rang
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [amountText, setAmountText] = useState("");
   const [toast, setToast] = useState<string | null>(null);
+  const [prevLimits, setPrevLimits] = useState(0);
 
   const notify = (m: string) => { setToast(m); setTimeout(() => setToast(null), 2800); };
   const expenseCats = cats.filter(c => c.type === "expense");
@@ -46,6 +47,25 @@ export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive, rang
   }, [budgets]);
   const selected = cats.find(c => c.id === selectedId);
   const existing = budgets.find(b => b.category_id === selectedId) as Budget | undefined;
+
+  // ¿Cuántos límites de ciclo hay en el ciclo anterior? Solo para ofrecer la herencia
+  // explícita en el estado vacío. El GET es de solo lectura (no crea filas).
+  useEffect(() => {
+    if (!rangeActive || !range) { setPrevLimits(0); return; }
+    let alive = true;
+    const prev = prevRange(range.from, range.to);
+    (async () => {
+      try {
+        const res = await fetch(`${API_URL}/v1/budgets?from=${prev.from}&to=${prev.to}`);
+        const list = res.ok ? await res.json() : [];
+        const n = (Array.isArray(list) ? list : []).filter((b: any) => b.period === "cycle").length;
+        if (alive) setPrevLimits(n);
+      } catch {
+        if (alive) setPrevLimits(0);
+      }
+    })();
+    return () => { alive = false; };
+  }, [rangeActive, range?.from, range?.to]);
 
   function catForBudget(b: Budget): Category {
     return cats.find(c => c.id === b.category_id) ?? { id: b.category_id!, label: b.categories?.name ?? "", slug: b.categories?.slug ?? "", type: "expense" };
@@ -132,6 +152,21 @@ export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive, rang
     } catch { notify("Error de red al copiar"); }
   }
 
+  async function inheritPrev() {
+    if (!rangeActive || !range) return;
+    try {
+      const res = await fetch(`${API_URL}/v1/budgets/carry-over`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ from: range.from, to: range.to }),
+      });
+      if (!res.ok) { notify("No se pudieron heredar los límites"); return; }
+      const data = await res.json();
+      onRefresh?.();
+      notify(data?.created > 0 ? `${data.created} límites heredados del ciclo anterior` : "Nada nuevo para heredar (ya estaban definidos)");
+    } catch { notify("Error de red al heredar"); }
+  }
+
   const preview = amountText ? parseInt(amountText.replace(/\D/g, ""), 10) : 0;
 
   return (
@@ -158,9 +193,15 @@ export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive, rang
           <Text style={s.emptySub}>{rangeActive ? "Define un límite para este ciclo o copia los del ciclo anterior." : "Configura tus categorías o copia las del mes anterior."}</Text>
           {rangeActive ? (
             <View style={s.emptyBtns}>
-              <TouchableOpacity style={s.primaryBtn} onPress={openConfig} activeOpacity={0.85}>
-                <MIcon name="cog" size={14} color="#04121F" />
-                <Text style={s.primaryBtnText}>Configurar</Text>
+              {prevLimits > 0 ? (
+                <TouchableOpacity style={s.primaryBtn} onPress={inheritPrev} activeOpacity={0.85}>
+                  <MIcon name="content-duplicate" size={14} color="#04121F" />
+                  <Text style={s.primaryBtnText}>{`Heredar ${prevLimits} ${prevLimits === 1 ? "límite" : "límites"} del ciclo anterior`}</Text>
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity style={prevLimits > 0 ? s.ghostBtn : s.primaryBtn} onPress={openConfig} activeOpacity={0.85}>
+                <MIcon name="cog" size={14} color={prevLimits > 0 ? C.primary : "#04121F"} />
+                <Text style={prevLimits > 0 ? s.ghostBtnText : s.primaryBtnText}>Configurar</Text>
               </TouchableOpacity>
               <TouchableOpacity style={s.ghostBtn} onPress={copyPrev} activeOpacity={0.85}>
                 <MIcon name="content-copy" size={14} color={C.primary} />

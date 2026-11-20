@@ -224,82 +224,121 @@ describe("GET /v1/budgets from/to — presupuestos por ciclo (period='cycle')", 
   });
 });
 
-describe("GET /v1/budgets from/to — herencia de límites al empezar un ciclo nuevo", () => {
-  it("ciclo nuevo sin límites devuelve los del ciclo anterior con carried_over y los persiste", async () => {
+describe("GET /v1/budgets from/to — el GET no hereda (solo lectura)", () => {
+  it("(a) ciclo vacío con límites en el ciclo anterior => [] y NO inserta", async () => {
     db.budgets = [
       { id: "p1", user_id: "u1", category_id: "cat-1", amount: 70000, month: "2026-09-20", period: "cycle" },
       { id: "p2", user_id: "u1", category_id: null, amount: 500000, month: "2026-09-20", period: "cycle" },
-      { id: "m1", user_id: "u1", category_id: "cat-9", amount: 10000, month: "2026-09-01", period: "monthly" },
-    ];
-    db.transactions = [
-      { id: "t1", user_id: "u1", type: "expense", status: "ok", date: "2026-10-25", amount: 20000, category_id: "cat-1" },
+      { id: "p3", user_id: "u1", category_id: "cat-2", amount: 30000, month: "2026-09-20", period: "cycle" },
     ];
     const app = Fastify();
     await app.register(budgetRoutes);
+    const before = db.budgets.length;
     const res = await app.inject({ method: "GET", url: "/v1/budgets?from=2026-10-20&to=2026-11-19" });
     expect(res.statusCode).toBe(200);
-    const body = res.json();
-    expect(body).toHaveLength(2);
-    const cat = body.find((x: any) => x.category_id === "cat-1");
-    const global = body.find((x: any) => x.category_id === null);
-    expect(cat).toMatchObject({ amount: 70000, month: "2026-10-20", period: "cycle", carried_over: true });
-    expect(cat.spent).toBe(20000);
-    expect(cat.remaining).toBe(50000);
-    expect(global).toMatchObject({ amount: 500000, month: "2026-10-20", period: "cycle", carried_over: true });
-    // persistidos en el ciclo nuevo
-    const persisted = db.budgets.filter((b: any) => b.month === "2026-10-20" && b.period === "cycle");
-    expect(persisted).toHaveLength(2);
-    expect(persisted.map((b: any) => b.category_id)).toEqual(expect.arrayContaining(["cat-1", null]));
-    expect(db.budgets).toHaveLength(5);
+    expect(res.json()).toEqual([]);
+    expect(db.budgets).toHaveLength(before);
+    expect(db.budgets.filter((b: any) => b.month === "2026-10-20")).toHaveLength(0);
   });
+});
 
-  it("segundo GET no duplica: ya encuentra los heredados y no inserta de nuevo", async () => {
-    db.budgets = [
-      { id: "p1", user_id: "u1", category_id: "cat-1", amount: 70000, month: "2026-09-20", period: "cycle" },
-    ];
-    const app = Fastify();
-    await app.register(budgetRoutes);
-    const first = await app.inject({ method: "GET", url: "/v1/budgets?from=2026-10-20&to=2026-11-19" });
-    expect(first.json()).toHaveLength(1);
-    expect(first.json()[0].carried_over).toBe(true);
-    const afterFirst = db.budgets.length;
-    const second = await app.inject({ method: "GET", url: "/v1/budgets?from=2026-10-20&to=2026-11-19" });
-    expect(second.json()).toHaveLength(1);
-    expect(second.json()[0].carried_over).toBe(false);
-    expect(second.json()[0].id).toBe(first.json()[0].id);
-    expect(db.budgets).toHaveLength(afterFirst);
-  });
-
-  it("un límite heredado borrado no reaparece", async () => {
+describe("POST /v1/budgets/carry-over — herencia explícita", () => {
+  function seedPrev() {
     db.budgets = [
       { id: "p1", user_id: "u1", category_id: "cat-1", amount: 70000, month: "2026-09-20", period: "cycle" },
       { id: "p2", user_id: "u1", category_id: "cat-2", amount: 30000, month: "2026-09-20", period: "cycle" },
+      { id: "p3", user_id: "u1", category_id: null, amount: 500000, month: "2026-09-20", period: "cycle" },
+      { id: "m1", user_id: "u1", category_id: "cat-9", amount: 10000, month: "2026-09-01", period: "monthly" },
     ];
+  }
+
+  it("(b) crea los 3 límites del ciclo anterior y el GET siguiente los devuelve", async () => {
+    seedPrev();
     const app = Fastify();
     await app.register(budgetRoutes);
-    const first = await app.inject({ method: "GET", url: "/v1/budgets?from=2026-10-20&to=2026-11-19" });
-    const cat1 = first.json().find((x: any) => x.category_id === "cat-1");
-    const del = await app.inject({ method: "DELETE", url: `/v1/budgets/${cat1.id}` });
-    expect(del.statusCode).toBe(200);
-    const after = await app.inject({ method: "GET", url: "/v1/budgets?from=2026-10-20&to=2026-11-19" });
-    const body = after.json();
-    expect(body).toHaveLength(1);
-    expect(body[0].category_id).toBe("cat-2");
-    expect(db.budgets.filter((b: any) => b.month === "2026-10-20" && b.category_id === "cat-1")).toHaveLength(0);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/budgets/carry-over",
+      payload: { from: "2026-10-20", to: "2026-11-19" },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.created).toBe(3);
+    expect(body.skipped).toBe(0);
+    expect(body.budgets).toHaveLength(3);
+
+    const get = await app.inject({ method: "GET", url: "/v1/budgets?from=2026-10-20&to=2026-11-19" });
+    expect(get.statusCode).toBe(200);
+    const list = get.json();
+    expect(list).toHaveLength(3);
+    expect(list.map((b: any) => b.category_id)).toEqual(expect.arrayContaining(["cat-1", "cat-2", null]));
+    for (const b of list) {
+      expect(b).toMatchObject({ month: "2026-10-20", period: "cycle" });
+    }
+    expect(list.find((b: any) => b.category_id === "cat-1").amount).toBe(70000);
   });
 
-  it("categoría ya presente en el ciclo actual no se sobreescribe", async () => {
-    db.budgets = [
-      { id: "c1", user_id: "u1", category_id: "cat-1", amount: 50000, month: "2026-10-20", period: "cycle" },
-      { id: "p1", user_id: "u1", category_id: "cat-1", amount: 70000, month: "2026-09-20", period: "cycle" },
-    ];
+  it("(c) un segundo POST devuelve created 0 y no duplica", async () => {
+    seedPrev();
     const app = Fastify();
     await app.register(budgetRoutes);
-    const res = await app.inject({ method: "GET", url: "/v1/budgets?from=2026-10-20&to=2026-11-19" });
-    const body = res.json();
-    expect(body).toHaveLength(1);
-    expect(body[0]).toMatchObject({ id: "c1", amount: 50000, carried_over: false });
-    expect(db.budgets.filter((b: any) => b.month === "2026-10-20")).toHaveLength(1);
+    const first = await app.inject({
+      method: "POST",
+      url: "/v1/budgets/carry-over",
+      payload: { from: "2026-10-20", to: "2026-11-19" },
+    });
+    expect(first.json().created).toBe(3);
+    const afterFirst = db.budgets.length;
+
+    const second = await app.inject({
+      method: "POST",
+      url: "/v1/budgets/carry-over",
+      payload: { from: "2026-10-20", to: "2026-11-19" },
+    });
+    expect(second.statusCode).toBe(200);
+    const body = second.json();
+    expect(body.created).toBe(0);
+    expect(body.skipped).toBe(3);
+    expect(body.budgets).toHaveLength(3);
+    expect(db.budgets).toHaveLength(afterFirst);
+  });
+
+  it("(d) sin límites en el ciclo anterior => created 0 sin error", async () => {
+    db.budgets = [];
+    const app = Fastify();
+    await app.register(budgetRoutes);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/budgets/carry-over",
+      payload: { from: "2026-10-20", to: "2026-11-19" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ created: 0, skipped: 0, budgets: [] });
+    expect(db.budgets).toHaveLength(0);
+  });
+
+  it("(e) from/to invertidos o mal formados => 400", async () => {
+    const app = Fastify();
+    await app.register(budgetRoutes);
+    const inverted = await app.inject({
+      method: "POST",
+      url: "/v1/budgets/carry-over",
+      payload: { from: "2026-11-19", to: "2026-10-20" },
+    });
+    expect(inverted.statusCode).toBe(400);
+    const malformed = await app.inject({
+      method: "POST",
+      url: "/v1/budgets/carry-over",
+      payload: { from: "2026-10", to: "2026-11-19" },
+    });
+    expect(malformed.statusCode).toBe(400);
+    const missing = await app.inject({
+      method: "POST",
+      url: "/v1/budgets/carry-over",
+      payload: {},
+    });
+    expect(missing.statusCode).toBe(400);
+    expect(db.budgets).toHaveLength(0);
   });
 });
 
