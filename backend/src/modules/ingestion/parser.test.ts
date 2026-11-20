@@ -54,6 +54,40 @@ describe("Phase 3 — Parser §14", () => {
     expect(n).not.toContain("12.345.678-9");
   });
 
+  // Muestras REALES de producción (Google Wallet, sender com.google.android.apps.walletnfcrel).
+  // Ojo: el espacio después de CLP es NO SEPARABLE (\u00a0) en la mayoría de las muestras.
+  const walletSamples: Array<[string, string, number]> = [
+    ["COMERCIALIZADORA MUNDO CLP\u00a01,000 con CMR Mastercard Contactless ••6592", "Comercializadora Mundo", 1000],
+    ["SABORES DEL CAMPO CLP\u00a09,000 con CMR Mastercard Contactless ••6592", "Sabores Del Campo", 9000],
+    ["Santiago Baila Salsa CLP\u00a03,000 con CMR Mastercard Contactless ••6592", "Santiago Baila Salsa", 3000],
+    ["RedGloba*BREAK CLP 5,200 con CMR Mastercard Contactless ••6592", "Redgloba Break", 5200],
+    ["RedGloba*BREAK CLP\u00a05,200 con CMR Mastercard Contactless ••6592", "Redgloba Break", 5200],
+    ["BEAUMONT Y OSORIO SPA CLP\u00a021,890 con CMR Mastercard Contactless ••6592", "Beaumont Y Osorio Spa", 21890],
+  ];
+
+  for (const [text, merchant, amount] of walletSamples) {
+    it(`merchant + monto Google Wallet: ${text.replace(/\u00a0/g, "<NBSP>")}`, () => {
+      const p = parseEmail(text);
+      expect(p.merchant).toBe(merchant);
+      expect(p.amount).toBe(amount);
+    });
+  }
+
+  it("Google Wallet sin comercio (solo dígitos) -> null, no inventar", () => {
+    expect(__test__.extractMerchant("12345 CLP\u00a01,000 con CMR Mastercard")).toBeNull();
+  });
+
+  it("control negativo: Falabella 'en <comercio>' sigue funcionando", () => {
+    const p = parseEmail("Compraste $5.200 en RedGloba BREAK SANTIAGO CHL con tu tarjeta CMR");
+    expect(p.merchant).toBe("RedGloba BREAK");
+    expect(p.amount).toBe(5200);
+  });
+
+  it("control negativo: correo de marketing no devuelve comercio falso", () => {
+    const p = parseEmail("¡Gana $25.000 con tu Cuenta Corriente!");
+    expect(p.merchant).toBeNull();
+  });
+
   it("pipeline §13: normalized -> parsed -> candidate", () => {
     const raw = "Compra por $32.990 en Lider - 24/08/2026";
     const normalized = normalizeForAI(raw);
