@@ -65,6 +65,17 @@ function extractLast4(text: string): string | null {
 }
 
 function extractMerchant(text: string): string | null {
+  // Google Wallet: "<COMERCIO> CLP 1.000 con <tarjeta>" — el espacio tras CLP suele ser NBSP. Va ANTES
+  // de la rama "en <comercio>" para no capturar el "en" del texto de la tarjeta.
+  const wallet = text.replace(/\u00a0/g, " ").trim().match(/^(.+?)\s+CLP[\s\u00a0]*([\d.,]+)\s+con\s+/i);
+  if (wallet) {
+    const raw = wallet[1].replace(/\*/g, " ").replace(/\s+/g, " ").trim();
+    // Sin comercio real (vacío o solo dígitos) -> null, no inventar
+    if (!raw || /^[\d\s.,]+$/.test(raw)) return null;
+    const titled = raw.toLowerCase().replace(/(^|\s)(\p{L})/gu, (_m, sp: string, ch: string) => sp + ch.toUpperCase());
+    return titled.slice(0, 40).trim();
+  }
+
   // "en Lider", "comercio: Jumbo" — captura 1-2 palabras, corta antes de stopwords
   const stop = new Set(["con", "tarjeta", "terminada", "en", "de", "la", "el", "por", "para", "del", "los", "las", "un", "una", "su", "on", "a", "al", "o", "y"]);
   // Patrón promo "en 3 o 6 cuotas" no es comercio — debe ignorarse
