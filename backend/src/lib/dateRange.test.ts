@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { monthOverlaps, rangeDays, addDays, toDate, fmt, daysInMonth, monthBounds, currentMonthLocal } from "./dateRange.js";
+import { monthOverlaps, rangeDays, addDays, toDate, fmt, daysInMonth, monthBounds, currentMonthLocal, shiftMonths } from "./dateRange.js";
 
 describe("#Filtro rango — helpers de fecha (ciclo 20→20)", () => {
   it("monthOverlaps agrupa correctamente un ciclo que cruza 2 meses", () => {
@@ -63,5 +63,16 @@ describe("#Filtro rango — helpers de fecha (ciclo 20→20)", () => {
   it("currentMonthLocal cambia a diciembre pasada la medianoche en Santiago", () => {
     // 2026-12-01T04:00Z = 01-dic 01:00 en Santiago → ya es diciembre.
     expect(currentMonthLocal(new Date("2026-12-01T04:00:00Z"))).toBe("2026-12");
+  });
+
+  it("shiftMonths ubica el inicio del ciclo anterior (20→20)", () => {
+    expect(shiftMonths("2026-10-20", -1)).toBe("2026-09-20");
+    expect(shiftMonths("2026-01-20", -1)).toBe("2025-12-20");
+    expect(shiftMonths("2026-10-20", 1)).toBe("2026-11-20");
+  });
+
+  it("shiftMonths recorta el día al último del mes destino", () => {
+    expect(shiftMonths("2026-03-31", -1)).toBe("2026-02-28");
+    expect(shiftMonths("2024-03-31", -1)).toBe("2024-02-29");
   });
 });
