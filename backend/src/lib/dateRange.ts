@@ -57,6 +57,20 @@ export function monthOverlaps(from: string, to: string): MonthOverlap[] {
   return out;
 }
 
+/**
+ * Desplaza una fecha "YYYY-MM-DD" en `delta` meses, recortando el día al
+ * último del mes destino (2026-03-31 - 1 mes → 2026-02-28). Se usa para
+ * ubicar el inicio del ciclo anterior (ej. 2026-10-20 → 2026-09-20).
+ */
+export function shiftMonths(date: string, delta: number): string {
+  const [y, m, day] = date.split("-").map(Number);
+  const total = y! * 12 + (m! - 1) + delta;
+  const ny = Math.floor(total / 12);
+  const nm = (((total % 12) + 12) % 12) + 1;
+  const nd = Math.min(day ?? 1, daysInMonth(ny, nm));
+  return `${ny}-${String(nm).padStart(2, "0")}-${String(nd).padStart(2, "0")}`;
+}
+
 /** Días totales de un rango inclusive. */
 export function rangeDays(from: string, to: string): number {
   return Math.round((toDate(to).getTime() - toDate(from).getTime()) / 86400000) + 1;

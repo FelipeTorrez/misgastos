@@ -2,8 +2,9 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { supabase, getUserId, isMockMode } from "../../lib/supabase.js";
 import { mockStore } from "../../lib/mockStore.js";
-import { monthBounds, monthOverlaps, rangeDays, currentMonthLocal } from "../../lib/dateRange.js";
+import { monthBounds, monthOverlaps, rangeDays, currentMonthLocal, shiftMonths } from "../../lib/dateRange.js";
 import { BudgetsQuery } from "../../lib/queryDates.js";
+import { planCarryOver } from "./carry.js";
 
 const CreateBudget = z.object({
   category_id: z.string().uuid().nullable(), // null = global
@@ -36,6 +37,35 @@ export async function budgetRoutes(app: FastifyInstance) {
       } else {
         const { data: bs } = await supabase.from("budgets").select("*, categories(name, slug)").eq("user_id", userId).eq("month", from).eq("period", "cycle");
         cycleBs = bs ?? [];
+      }
+
+      // Ciclo nuevo sin límites: heredar los del ciclo anterior (eje 20→20).
+      // Idempotente: en el siguiente GET ya existen filas para `from`, así que
+      // no se vuelve a insertar; un límite borrado no reaparece.
+      let carriedOver = false;
+      if (cycleBs.length === 0) {
+        const prevStart = shiftMonths(from, -1);
+        let prevBs: any[];
+        if (isMockMode) {
+          prevBs = mockStore.listBudgets(userId, prevStart).filter(b => b.period === "cycle");
+        } else {
+          const { data: bs } = await supabase.from("budgets").select("*").eq("user_id", userId).eq("month", prevStart).eq("period", "cycle");
+          prevBs = bs ?? [];
+        }
+        const plan = planCarryOver(prevBs, cycleBs, from);
+        if (plan.length > 0) {
+          if (isMockMode) {
+            for (const row of plan) mockStore.upsertBudget(userId, row);
+            cycleBs = mockStore.listBudgets(userId, from).filter(b => b.period === "cycle");
+          } else {
+            for (const row of plan) {
+              await supabase.from("budgets").insert({ ...row, user_id: userId });
+            }
+            const { data: bs } = await supabase.from("budgets").select("*, categories(name, slug)").eq("user_id", userId).eq("month", from).eq("period", "cycle");
+            cycleBs = bs ?? [];
+          }
+          carriedOver = cycleBs.length > 0;
+        }
       }
 
       // spent: gasto real dentro del rango (con fecha para el prorrateo por tramo del fallback)
@@ -83,6 +113,7 @@ export async function budgetRoutes(app: FastifyInstance) {
             month: from,
             period: "cycle",
             partial: false,
+            carried_over: carriedOver,
             range: { from, to },
           };
         });
