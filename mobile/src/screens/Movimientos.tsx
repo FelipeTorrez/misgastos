@@ -165,7 +165,7 @@ export function Movimientos({ txs, truncated, limit, cats, month, filterCategory
       )}
 
       <View style={s.topBar}>
-        <View style={s.filterRow}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filterRow}>
           {(["all", "pending", "confirmed", "review"] as const).map(f => (
             <TouchableOpacity key={f} style={[s.filterBtn, filter === f && s.filterActive]} onPress={() => setFilter(f)}>
               <Text style={[s.filterText, filter === f && s.filterTextActive]}>
@@ -173,7 +173,7 @@ export function Movimientos({ txs, truncated, limit, cats, month, filterCategory
               </Text>
             </TouchableOpacity>
           ))}
-        </View>
+        </ScrollView>
         {filterCategory && (
           <View style={s.activeFilterWrap}>
             <View style={s.activeFilterChip}>
@@ -352,7 +352,7 @@ export function Movimientos({ txs, truncated, limit, cats, month, filterCategory
 
 const s = StyleSheet.create({
   topBar: { paddingHorizontal: 16, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: C.border },
-  filterRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  filterRow: { flexDirection: "row", gap: 8 },
   filterBtn: { backgroundColor: C.surfaceAlt, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16, borderWidth: 1, borderColor: C.border },
   filterActive: { backgroundColor: C.surface, borderColor: C.primary },
   filterText: { color: C.dim, fontSize: 12, fontWeight: "600" },

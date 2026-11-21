@@ -146,15 +146,15 @@ export function Categorias({ txs, cats, byCat, onSelectCategory, txsTruncated }:
         <View style={s.auditRow}>
           <View style={s.auditCol}>
             <Text style={s.auditNum}>{pctIA}%</Text>
-            <Text style={s.auditLabel}>Por IA</Text>
+            <Text style={s.auditLabel} numberOfLines={1}>Por IA</Text>
           </View>
           <View style={s.auditCol}>
             <Text style={s.auditNum}>{sinIA}</Text>
-            <Text style={s.auditLabel}>Sin IA</Text>
+            <Text style={s.auditLabel} numberOfLines={1}>Sin IA</Text>
           </View>
           <View style={s.auditCol}>
             <Text style={s.auditNum}>{audit.requierenRevision}</Text>
-            <Text style={s.auditLabel}>Por revisar</Text>
+            <Text style={s.auditLabel} numberOfLines={1}>Revisar</Text>
           </View>
         </View>
         {txsTruncated && (
