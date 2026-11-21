@@ -245,7 +245,7 @@ export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive, rang
                     <Text style={s.name}>{name}</Text>
                     <Text style={s.spent}>{fmtCLP(b.spent)}</Text>
                   </View>
-                  <Text style={s.limit}>{budgetDetailLabel(b, cycleN)}</Text>
+                  <Text style={s.limit}>{budgetDetailLabel(b, cycleN, { perDay: !pace })}</Text>
                   {pace && (
                     <Text style={[s.pace, pace.overspent && { color: C.negative }]}>
                       {pace.overspent

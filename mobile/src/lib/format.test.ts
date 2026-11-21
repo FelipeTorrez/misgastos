@@ -71,4 +71,34 @@ describe("budgetDetailLabel", () => {
     expect(label).toBe(`de ${fmtCLP(31000)} (≈${fmtCLP(1000)}/día)`);
     expect(label).not.toContain("en ");
   });
+
+  it("cycle con perDay:true explícito → igual que el default", () => {
+    const implicit = budgetDetailLabel({ amount: 400000, period: "cycle" }, 30);
+    const explicit = budgetDetailLabel({ amount: 400000, period: "cycle" }, 30, { perDay: true });
+    expect(explicit).toBe(implicit);
+    expect(explicit).toBe(`de ${fmtCLP(400000)} · límite del ciclo (≈${fmtCLP(Math.round(400000 / 30))}/día)`);
+  });
+
+  it("cycle con perDay:false → sin '(≈$/día)', conserva 'límite del ciclo'", () => {
+    const label = budgetDetailLabel({ amount: 400000, period: "cycle" }, 30, { perDay: false });
+    expect(label).toBe(`de ${fmtCLP(400000)} · límite del ciclo`);
+    expect(label).not.toContain("/día");
+    expect(label).not.toContain("≈");
+  });
+
+  it("partial con perDay:false → sin $/día y conserva 'C de T días'", () => {
+    const label = budgetDetailLabel(
+      { amount: 27097, partial: true, coveredDays: 12, totalDays: 31 },
+      31,
+      { perDay: false },
+    );
+    expect(label).toBe(`de ${fmtCLP(27097)} · 12 de 31 días`);
+    expect(label).not.toContain("/día");
+  });
+
+  it("mensual con perDay:false → solo 'de $X'", () => {
+    const label = budgetDetailLabel({ amount: 31000 }, 31, { perDay: false });
+    expect(label).toBe(`de ${fmtCLP(31000)}`);
+    expect(label).not.toContain("/día");
+  });
 });
