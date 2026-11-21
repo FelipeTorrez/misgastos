@@ -47,6 +47,8 @@ export function fmtWallDate(iso: string): string {
  * - cycle: "de $M · límite del ciclo (≈$/día)".
  * - partial con coveredDays: "de $M · C de T días (≈$/día)" dividiendo por coveredDays (NO por cycleN).
  * - mensual completo: "de $M (≈$/día)" solo si cycleN>0, sin repetir "en N días".
+ * - `opts.perDay === false` (default true) omite el sufijo "(≈$/día)" en todas las ramas:
+ *   se usa cuando la fila ya muestra una línea de ritmo con el $/día real.
  */
 export type BudgetLabelInput = {
   amount: number;
@@ -56,19 +58,24 @@ export type BudgetLabelInput = {
   totalDays?: number | null;
 };
 
-export function budgetDetailLabel(b: BudgetLabelInput, cycleN: number): string {
+export type BudgetLabelOpts = { perDay?: boolean };
+
+export function budgetDetailLabel(b: BudgetLabelInput, cycleN: number, opts?: BudgetLabelOpts): string {
+  const perDay = opts?.perDay !== false;
   const amount = fmtCLP(b.amount);
   if (b.period === "cycle") {
     const base = `de ${amount} · límite del ciclo`;
-    if (cycleN > 0) return `${base} (≈${fmtCLP(Math.round(b.amount / cycleN))}/día)`;
+    if (perDay && cycleN > 0) return `${base} (≈${fmtCLP(Math.round(b.amount / cycleN))}/día)`;
     return base;
   }
   if (b.partial && b.coveredDays != null && b.coveredDays > 0) {
-    const perDay = fmtCLP(Math.round(b.amount / b.coveredDays));
-    if (b.totalDays != null) return `de ${amount} · ${b.coveredDays} de ${b.totalDays} días (≈${perDay}/día)`;
-    return `de ${amount} (≈${perDay}/día)`;
+    const days = b.totalDays != null ? `${b.coveredDays} de ${b.totalDays} días` : null;
+    if (!perDay) return days ? `de ${amount} · ${days}` : `de ${amount}`;
+    const perDayAmount = fmtCLP(Math.round(b.amount / b.coveredDays));
+    if (days) return `de ${amount} · ${days} (≈${perDayAmount}/día)`;
+    return `de ${amount} (≈${perDayAmount}/día)`;
   }
-  if (cycleN > 0) return `de ${amount} (≈${fmtCLP(Math.round(b.amount / cycleN))}/día)`;
+  if (perDay && cycleN > 0) return `de ${amount} (≈${fmtCLP(Math.round(b.amount / cycleN))}/día)`;
   return `de ${amount}`;
 }
 
