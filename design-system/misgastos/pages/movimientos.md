@@ -10,7 +10,7 @@
 
 ## 1. Propósito de la página
 
-Lista mensual de transacciones. Filtros `Todas / Pendientes / Confirmadas` + chip de filtro por categoría (viene de Categorías). Cada fila es táctil y abre un **Sheet inferior** (no modal centrado) para reeditar la categoría. Swipe horizontal para borrar. Estados: `pending_ai`, `pending_review`, `confirmed`, `corrected`, `duplicate`, `ignored`.
+Lista mensual de transacciones. Filtros `Todas / Pendientes / Confirmadas / Revisar` (el contador solo se muestra con `N > 0`: `Pendientes (2)`, `Revisar (5)`) + chip de filtro por categoría (viene de Categorías). Cada fila es táctil y abre un **Sheet inferior** (no modal centrado) para reeditar la categoría. Swipe horizontal para borrar. Estados: `pending_ai`, `pending_review`, `confirmed`, `corrected`, `duplicate`, `ignored`.
 
 ## 2. Tokens reales (override color — `mobile/src/theme/tokens.ts:5`)
 
