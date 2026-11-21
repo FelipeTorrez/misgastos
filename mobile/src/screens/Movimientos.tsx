@@ -192,7 +192,7 @@ export function Movimientos({ txs, truncated, limit, cats, month, filterCategory
             style={s.searchInput}
             value={q}
             onChangeText={setQ}
-            placeholder="Buscar por comercio"
+            placeholder="Buscar comercio o monto"
             placeholderTextColor={C.faint}
             returnKeyType="search"
           />
