@@ -1,6 +1,6 @@
 # HANDOFF — Contexto completo para continuar desarrollo
 
-> Última actualización: 2026-11-18 — **Tandas MG-032…MG-051: presupuestos por ciclo, límite 200, dedup por tiempo, hero con Δ% y proyección** ✅ — backend `284/284` (34 files) · mobile `57/57` (9 files) · `tsc --noEmit` 0 en ambos. Ver §4 (-25).
+> Última actualización: 2026-11-21 (noche) — **Movimientos: los 4 chips de filtro entran sin scroll ni corte** ✅ — backend `309/309` (36 files) · mobile `101/101` (12 files) · `tsc --noEmit` 0 en ambos · APK release instalado y verificado on-device (`uiautomator`: `Todas`/`Pendientes`/`Confirmadas`/`Revisar` completos en una fila, el último termina en x≈918 px de 1080). Ver §4 (-28).
 >
 > Anterior (2026-11-14) — **Orquestador automático: MG-001 / MG-003 / MG-004 mergeados a main** ✅ — `185/185` tests (24 files), `tsc --noEmit` 0. El pipeline (hermes brain + opencode coder) propone ideas, las implementa en rama aislada y mergea solo con tests verdes. MG-003 dejó `tsc` roto (`path` readonly en zod) → corregido, y `npx tsc --noEmit` quedó como gate obligatorio del pipeline. Ver §4 (-20).
 >
@@ -25,7 +25,7 @@
 | Backend | Node.js + Fastify + tsx (watch) + Node 22 en Railway (prod), Zod para validación |
 | DB | Supabase (Postgres + RLS) — **conectada en cloud (proyecto bqnktrfwoxetbirrodmo), modo real activo** |
 | AI | Groq API (`qwen/qwen3.8-27b` actual, antes `llama-3.1-70b`) con fallback mock — **Groq real activo** |
-| Tests | Vitest — **171/171 passing** (22 files) · `mobile: tsc --noEmit` **0 errores** · `tests/ingestion.guard.test.ts` + `tests/agent-financiero.test.ts` + `src/modules/{settings,ranges}` |
+| Tests | Vitest — **309/309 passing** (36 files) · mobile `101/101` (12 files) · `mobile: tsc --noEmit` **0 errores** · `tests/ingestion.guard.test.ts` + `tests/agent-financiero.test.ts` + `src/modules/{settings,ranges}` |
 
 ### Estado de fases
 - ✅ Phase 0: Spec + ADRs 001–007 (`spec/`, `docs/decisions/`)
@@ -171,6 +171,11 @@ Durante la sesión del 25/08 hubo **OTRA IA/sesión editando este mismo repo sim
 ---
 
 ## 4. Cambios de la última sesión (lo más reciente primero)
+
+-28. **Movimientos: los 4 chips de filtro entran sin scroll ni corte** — 2026-11-21 noche — `mobile/src/screens/Movimientos.tsx:171`, `mobile/src/screens/Movimientos.tsx:356`:
+    - **Problema**: MG-070 dejó los 4 chips en una sola fila, pero en 360 dp el cuarto se cortaba (`Revisa…`) porque los textos llevaban el contador entre paréntesis **también cuando valía 0** (`Pendientes (0)`, `Revisar (0)`), el caso en que el dato no aporta nada.
+    - **Fix**: el contador se muestra solo con `N > 0` (`Pendientes` / `Pendientes (N)`, `Revisar` / `Revisar (N)`; `Todas` y `Confirmadas` nunca lo tuvieron) y `filterBtn.paddingHorizontal` baja de 14 a 10. Orden, colores, `activeFilterChip` y la lógica de filtrado no cambian; el `ScrollView horizontal` de MG-070 queda como red de seguridad.
+    - **Verificación**: `mobile npm test` **101/101** (12 files), `npx tsc --noEmit` **0**, backend `vitest run` **309/309** (36 files), `gradlew assembleRelease` OK + `adb install -r` Success. On-device (`uiautomator`, 1080 px de ancho): `Todas` `[74..169]`, `Pendientes` `[252..433]`, `Confirmadas` `[515..718]`, `Revisar` `[801..918]` — los 4 completos y sin deslizar. No había movimientos pendientes en el ciclo, así que el formato `(N)` se validó por código: no se sembraron datos porque la app apunta a la Supabase de producción.
 
 -27. **Herencia de presupuestos, parser de Wallet y diagnóstico de lo que no entró (MG-048/062/064/065)** — 2026-11-20:
     - **Un GET que escribía en la base (corregido).** MG-062 hizo que `GET /v1/budgets?from&to` heredara los límites del ciclo anterior cuando lo encontraba vacío. Funcionaba, pero convertía un GET en un WRITE: cada carga de Presupuestos podía insertar filas, los `insert` no revisaban `error`, y **borrar los tres límites los resucitaba** en el siguiente GET (el comentario decía lo contrario). MG-065 lo movió a `POST /v1/budgets/carry-over {from,to}`: el GET volvió a ser solo lectura —comparado con el comportamiento previo a MG-062, que ya estaba probado en producción—, el POST valida con zod, revisa el error de cada insert y devuelve `{created, skipped}`; la app ofrece "Heredar N límites del ciclo anterior" en el estado vacío. `planCarryOver` (función pura, `budgets/carry.ts`) se conserva con sus tests.
@@ -532,7 +537,7 @@ PLAN-dev-client-fix.md                        → análisis root cause native mo
 Invoke-RestMethod http://localhost:3000/health
 
 # 2. Tests verdes?
-powershell -ExecutionPolicy Bypass -Command "cd backend; npx vitest run"    # esperar: 22 files, 171 tests passed (incluye ingestion.guard + agent-financiero + settings/ranges)
+powershell -ExecutionPolicy Bypass -Command "cd backend; npx vitest run"    # esperar: 36 files, 309 tests passed (incluye ingestion.guard + agent-financiero + settings/ranges)
 
 # 3. Flujo reglas funciona?
 Invoke-RestMethod -Uri http://localhost:3000/v1/rules -Method POST -Headers @{"Content-Type"="application/json"} -Body '{"merchant_normalized":"test","preferred_category_id":"00000000-0000-0000-0000-000000000001"}'

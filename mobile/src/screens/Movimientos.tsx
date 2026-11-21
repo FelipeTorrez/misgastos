@@ -169,7 +169,13 @@ export function Movimientos({ txs, truncated, limit, cats, month, filterCategory
           {(["all", "pending", "confirmed", "review"] as const).map(f => (
             <TouchableOpacity key={f} style={[s.filterBtn, filter === f && s.filterActive]} onPress={() => setFilter(f)}>
               <Text style={[s.filterText, filter === f && s.filterTextActive]}>
-                {f === "all" ? "Todas" : f === "pending" ? `Pendientes (${pendingCount})` : f === "confirmed" ? "Confirmadas" : `Revisar (${reviewCount})`}
+                {f === "all"
+                  ? "Todas"
+                  : f === "pending"
+                  ? pendingCount > 0 ? `Pendientes (${pendingCount})` : "Pendientes"
+                  : f === "confirmed"
+                  ? "Confirmadas"
+                  : reviewCount > 0 ? `Revisar (${reviewCount})` : "Revisar"}
               </Text>
             </TouchableOpacity>
           ))}
@@ -353,7 +359,7 @@ export function Movimientos({ txs, truncated, limit, cats, month, filterCategory
 const s = StyleSheet.create({
   topBar: { paddingHorizontal: 16, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: C.border },
   filterRow: { flexDirection: "row", gap: 8 },
-  filterBtn: { backgroundColor: C.surfaceAlt, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16, borderWidth: 1, borderColor: C.border },
+  filterBtn: { backgroundColor: C.surfaceAlt, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 16, borderWidth: 1, borderColor: C.border },
   filterActive: { backgroundColor: C.surface, borderColor: C.primary },
   filterText: { color: C.dim, fontSize: 12, fontWeight: "600" },
   filterTextActive: { color: C.text },
