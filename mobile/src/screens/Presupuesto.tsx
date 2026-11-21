@@ -11,6 +11,7 @@ import { MIcon } from "../components/ui/MIcon";
 import { API_URL } from "../lib/supabase";
 import { fmtCLP, budgetDetailLabel } from "../lib/format";
 import { cycleDays, prevRange, rangeLabel } from "../lib/billingCycle";
+import { cyclePace } from "../lib/pace";
 
 export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive, range, onGoMonth }: {
   budgets: Budget[];
@@ -233,6 +234,9 @@ export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive, rang
             const cat = cats.find(c => c.id === b.category_id);
             const slug = b.categories?.slug ?? cat?.slug;
             const name = b.categories?.name ?? cat?.label ?? "Categoría";
+            const pace = rangeActive && range && b.period === "cycle"
+              ? cyclePace({ limit: b.amount, spent: b.spent, from: range.from, to: range.to })
+              : null;
             const content = (
               <Pressable style={({ pressed }) => [s.row, pressed && { opacity: 0.7 }]} onPress={() => editBudget(b)}>
                 <CategoryCircle slug={slug} size={40} />
@@ -242,6 +246,13 @@ export function Presupuesto({ budgets, cats, month, onRefresh, rangeActive, rang
                     <Text style={s.spent}>{fmtCLP(b.spent)}</Text>
                   </View>
                   <Text style={s.limit}>{budgetDetailLabel(b, cycleN)}</Text>
+                  {pace && (
+                    <Text style={[s.pace, pace.overspent && { color: C.negative }]}>
+                      {pace.overspent
+                        ? `Excedido en ${fmtCLP(-pace.remaining)}`
+                        : `Quedan ${fmtCLP(pace.remaining)} · ${fmtCLP(pace.perDay)}/día por ${pace.daysLeft} ${pace.daysLeft === 1 ? "día" : "días"}`}
+                    </Text>
+                  )}
                   <View style={{ marginTop: 8 }}>
                     <Progress pct={b.pct ?? 0} height={7} />
                   </View>
@@ -325,6 +336,7 @@ const s = StyleSheet.create({
   name: { color: C.text, fontWeight: "700", fontSize: 15 },
   spent: { ...T.num, color: C.text, fontWeight: "800", fontSize: 14 },
   limit: { color: C.dim, fontSize: 12, marginTop: 1 },
+  pace: { ...T.num, color: C.dim, fontSize: 12, fontWeight: "700", marginTop: 2 },
   empty: { alignItems: "center", paddingVertical: 32, paddingHorizontal: 16, gap: 6 },
   emptyIcon: { width: 64, height: 64, borderRadius: 999, backgroundColor: C.primarySoft, alignItems: "center", justifyContent: "center", marginBottom: 6 },
   emptyTitle: { color: C.text, fontSize: 16, fontWeight: "700", textAlign: "center" },
