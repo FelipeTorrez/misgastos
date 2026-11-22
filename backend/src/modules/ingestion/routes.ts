@@ -2,7 +2,7 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { supabase, getUserId, isMockMode } from "../../lib/supabase.js";
 import { parseEmail, normalizeForAI } from "./parser.js";
-import { isDuplicate, betterClassificationPatch } from "./dedup.js";
+import { isDuplicate, betterClassificationPatch, dedupKey } from "./dedup.js";
 import { mockStore } from "../../lib/mockStore.js";
 import { normalizeMerchant, findBestRuleMatch, isPaymentProcessor } from "../../lib/merchantNorm.js";
 import { get as classifyCacheGet, set as classifyCacheSet } from "../../lib/classifyCache.js";
@@ -352,6 +352,18 @@ async function ingestFromRaw(userId: string, rawEvent: any) {
       if (metadata.review_reason) metadata.ai_fallback = fallbackReason;
       metadata.review_reason = "payment_processor";
     }
+    // Huella atómica (migración 008). Sólo la fila que aspira a ser el original
+    // lleva dedup_key; las 'duplicate' se guardan con null para no competir por
+    // el índice único (ver supabase/migrations/008_dedup_key.sql).
+    const atomicDedupKey = dedupKey({
+      amount: p.amount,
+      type,
+      merchant: finalMerchant,
+      date: (ai as any)?.date ?? p.date ?? null,
+      time: p.time,
+      receivedAt: rawEvent.received_at ?? null,
+    });
+
     const payload: any = {
       user_id: userId, raw_event_id: rawEventId, merchant: finalMerchant,
       amount: p.amount, currency: p.currency ?? "CLP", type,
@@ -362,6 +374,7 @@ async function ingestFromRaw(userId: string, rawEvent: any) {
       status, confidence: aiConfidence,
       is_recurring_candidate: ai?.is_recurring_candidate ?? false, duplicate_of: duplicateOf,
       source: classificationSource,
+      dedup_key: dedupFound ? null : atomicDedupKey,
       ...(Object.keys(metadata).length ? { metadata } : {}),
     };
 
@@ -369,8 +382,33 @@ async function ingestFromRaw(userId: string, rawEvent: any) {
       transaction = mockStore.insertTransaction(userId, payload);
     } else {
       const { data: tx, error } = await supabase.from("transactions").insert(payload).select().single();
-      if (error) return { status: 500, body: { error: `transactions insert: ${error.message}`, payload } };
-      transaction = tx;
+      if (!error) {
+        transaction = tx;
+      } else if ((error as any).code === "23505" && atomicDedupKey) {
+        // Otra petición en paralelo insertó el mismo pago entre el SELECT de la
+        // dedup §15 y este INSERT: el índice único (user_id, dedup_key) la
+        // delata. Se relee el original y se guarda esta fila como 'duplicate',
+        // igual que hace la dedup en memoria (sin clave, para no volver a chocar).
+        const { data: winners, error: lookupError } = await supabase
+          .from("transactions")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("dedup_key", atomicDedupKey)
+          .limit(1);
+        if (lookupError) return { status: 500, body: { error: `dedup_key lookup: ${lookupError.message}` } };
+        const original = ((winners ?? []) as any[])[0] ?? null;
+        if (!original) return { status: 500, body: { error: `transactions insert: ${error.message} (dedup_key sin fila)` } };
+        const { data: dupRow, error: dupError } = await supabase
+          .from("transactions")
+          .insert({ ...payload, status: "duplicate", duplicate_of: original.id, dedup_key: null })
+          .select()
+          .single();
+        if (dupError) return { status: 500, body: { error: `transactions duplicate insert: ${dupError.message}` } };
+        transaction = dupRow;
+        dedupFound = original;
+      } else {
+        return { status: 500, body: { error: `transactions insert: ${error.message}`, payload } };
+      }
     }
 
     // Dedup §15+: no gana la fila que llegó primero, gana la mejor clasificación.

@@ -13,6 +13,8 @@
  * escritores juntos (ingesta + mobile), no solo este archivo.
  */
 
+import { createHash } from "node:crypto";
+
 export type Candidate = {
   amount: number;
   date: string | null; // YYYY-MM-DD
@@ -46,6 +48,80 @@ function normalizeMerchant(m: string | null): string {
 /** T2: quita espacios, guiones y puntuación (solo quedan letras/números), lowercase. */
 export function squashMerchant(m: string | null | undefined): string {
   return (m ?? "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+}
+
+export type DedupKeyInput = {
+  amount: number | null | undefined;
+  type: string | null | undefined;
+  merchant: string | null | undefined;
+  date?: string | null; // YYYY-MM-DD (o ISO con la fecha primero)
+  time?: string | null; // HH:MM (hora de pared del texto)
+  receivedAt?: string | null; // ISO de llegada; fallback cuando el texto no trae hora
+};
+
+/** "15:3" / "15:30" / "15:30:12" → "15:30"; inválido → null. */
+function minuteOfDay(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const m = String(value).match(/(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const mi = Number(m[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(mi) || h > 23 || mi > 59) return null;
+  return `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
+}
+
+/** Fecha YYYY-MM-DD del encabezado del string; inválida → null. */
+function dayOf(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
+/**
+ * Día + minuto de un ISO. Se lee en UTC igual que el resto de esta carpeta
+ * (convención: hora de pared etiquetada con Z, ver header).
+ */
+function minuteOfIso(value: string | null | undefined): { day: string; minute: string } | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return {
+    day: d.toISOString().slice(0, 10),
+    minute: `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`,
+  };
+}
+
+/**
+ * Clave atómica anti-duplicado concurrente (migración 008).
+ *
+ * `isDuplicate` es `leer → comparar → insertar`: dos peticiones en paralelo
+ * (Wallet + Falabella del mismo pago, 38 ms de diferencia) leen las últimas
+ * transacciones antes de que la otra inserte y ninguna se ve. Esta huella viaja
+ * a la fila y el índice único `transactions(user_id, dedup_key)` hace que la
+ * segunda inserción choque (23505) aunque ninguna haya visto a la otra.
+ *
+ * Huella = md5(amount | type | merchant_normalizado | YYYY-MM-DD HH:MM), con
+ * ventana de 1 minuto: más estricta que los 60 min de `isDuplicate`, así que dos
+ * compras del mismo monto el mismo día a horas distintas no colisionan. El
+ * merchant va "squasheado" (sin espacios ni puntuación) para que
+ * "RedGloba*BREAK" y "Redgloba Break" caigan en la misma clave.
+ *
+ * Si el texto no trae hora se usa el minuto de `receivedAt` (dos notificaciones
+ * simultáneas del mismo pago caen en el mismo minuto igual). Sin hora ni
+ * `receivedAt` devuelve null: esa fila no participa del índice y queda sólo con
+ * la dedup en memoria.
+ */
+export function dedupKey(input: DedupKeyInput): string | null {
+  const amount = input.amount;
+  if (amount === null || amount === undefined || !Number.isFinite(amount)) return null;
+  const type = (input.type ?? "").trim().toLowerCase();
+  if (!type || type === "none") return null;
+  const fromIso = minuteOfIso(input.receivedAt ?? null);
+  const day = dayOf(input.date) ?? fromIso?.day ?? null;
+  const minute = minuteOfDay(input.time) ?? fromIso?.minute ?? null;
+  if (!day || !minute) return null;
+  const material = `${Math.round(amount)}|${type}|${squashMerchant(input.merchant)}|${day} ${minute}`;
+  return createHash("md5").update(material, "utf8").digest("hex");
 }
 
 function sameDay(a: string | null, b: string): boolean {

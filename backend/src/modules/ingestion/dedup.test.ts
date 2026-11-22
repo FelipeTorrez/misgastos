@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isDuplicate, squashMerchant, isBetterClassification, betterClassificationPatch } from "./dedup.js";
+import { isDuplicate, squashMerchant, isBetterClassification, betterClassificationPatch, dedupKey } from "./dedup.js";
 
 const baseExisting = [
   { id: "1", amount: 32990, date: "2026-08-24T15:30:00Z", merchant: "Lider", type: "expense", status: "confirmed" },
@@ -111,6 +111,45 @@ describe("Dedup T1/T2/T3 — caso real RedGloba 17-nov ($5.200, 3s)", () => {
     ];
     const cand = { amount: 5200, date: "2026-11-17", time: "21:06", merchant: null, type: "expense" };
     expect(isDuplicate(cand, existing as any)).toBeNull();
+  });
+});
+
+describe("Dedup key atómica (migración 008) — md5(amount|type|merchant|YYYY-MM-DD HH:MM)", () => {
+  const base = { amount: 1300, type: "expense", merchant: "Redgloba Break", date: "2026-11-22", time: "23:27" };
+
+  it("mismo monto, merchant y minuto → misma clave (el caso RedGloba 38 ms)", () => {
+    expect(dedupKey(base)).toBe(dedupKey({ ...base }));
+    // Puntuación/espacios distintos entre canales no cambian la huella.
+    expect(dedupKey({ ...base, merchant: "redgloba*BREAK" })).toBe(dedupKey(base));
+  });
+
+  it("mismo monto y merchant en minutos distintos → claves distintas", () => {
+    expect(dedupKey({ ...base, time: "23:28" })).not.toBe(dedupKey(base));
+    expect(dedupKey({ ...base, time: "23:27" })).not.toBe(dedupKey({ ...base, time: "23:26" }));
+  });
+
+  it("distinto monto / type / día → claves distintas", () => {
+    expect(dedupKey({ ...base, amount: 1301 })).not.toBe(dedupKey(base));
+    expect(dedupKey({ ...base, type: "transfer" })).not.toBe(dedupKey(base));
+    expect(dedupKey({ ...base, date: "2026-11-23" })).not.toBe(dedupKey(base));
+  });
+
+  it("acepta HH:MM:SS y lo reduce al minuto", () => {
+    expect(dedupKey({ ...base, time: "23:27:02" })).toBe(dedupKey(base));
+  });
+
+  it("sin hora en el texto usa el minuto de receivedAt", () => {
+    const sinHora = { ...base, time: null };
+    expect(dedupKey({ ...sinHora, receivedAt: "2026-11-22T23:27:02.543Z" }))
+      .toBe(dedupKey({ ...sinHora, receivedAt: "2026-11-22T23:27:02.581Z" }));
+    expect(dedupKey({ ...sinHora, receivedAt: "2026-11-22T23:27:02.543Z" }))
+      .not.toBe(dedupKey({ ...sinHora, receivedAt: "2026-11-22T23:28:00.000Z" }));
+  });
+
+  it("sin hora ni receivedAt, sin monto o type 'none' → null (no participa del índice)", () => {
+    expect(dedupKey({ ...base, time: null })).toBeNull();
+    expect(dedupKey({ ...base, amount: null })).toBeNull();
+    expect(dedupKey({ ...base, type: "none" })).toBeNull();
   });
 });
 
