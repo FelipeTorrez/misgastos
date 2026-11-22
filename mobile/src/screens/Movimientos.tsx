@@ -8,6 +8,7 @@ import { Category } from "../lib/categories";
 import { C, R, T } from "../theme/tokens";
 import { needsAudit, provenanceLabel } from "../lib/classification";
 import { reviewQueue } from "../lib/audit";
+import { reviewReasonLabel } from "../lib/reviewReason";
 import { MIcon } from "../components/ui/MIcon";
 import { CategoryCircle } from "../components/ui/CategoryCircle";
 import { StatusBadge } from "../components/ui/StatusBadge";
@@ -153,10 +154,7 @@ export function Movimientos({ txs, truncated, limit, cats, month, filterCategory
   const searching = q.trim().length > 0;
   const pendingCount = base.filter(tx => tx.status === "pending_review" || tx.status === "pending_ai").length;
   const isPending = (tx: any) => tx.status === "pending_review" || tx.status === "pending_ai";  const reviewReason = (tx: any): string | null => tx.review_reason ?? tx.metadata?.review_reason ?? null;
-  const reviewLabel = (r: string | null) =>
-    r === "payment_processor"
-      ? "Procesador de pago: el banco no muestra el comercio real — elige la categoría."
-      : r ? `Motivo: ${r}` : null;
+  const reviewLabel = (r: string | null) => reviewReasonLabel(r);
 
   return (
     <View style={{ flex: 1 }}>
