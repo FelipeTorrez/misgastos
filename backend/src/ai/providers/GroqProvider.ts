@@ -7,7 +7,9 @@ import { FINAN_SYSTEM_PROMPT, inferDirection } from "../prompts/agente-financier
 // Verificar con: GET https://api.groq.com/openai/v1/models (con GROQ_API_KEY).
 // Si el modelo fue decomisionado, la API responde 400 y el provider cae a mock
 // con provider_fallback visible (ver manejo 'decommissioned' abajo).
-export const DEFAULT_GROQ_MODEL = "qwen/qwen3-32b";
+// Verificado: 2026-11-22 contra https://console.groq.com/docs/deprecations
+// (qwen/qwen3-32b fue decomisionado el 2026-07-17). Mismo modelo que corre en prod (Railway).
+export const DEFAULT_GROQ_MODEL = "qwen/qwen3.8-27b";
 
 function formatRetryAfter(raw: unknown): string {
   if (raw == null) return "unknown";

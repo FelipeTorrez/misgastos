@@ -201,7 +201,19 @@ describe("Phase 4 — AI Agent #1 (Groq) mock", () => {
       await p.classify(baseInput as any);
       expect(bodies.length).toBeGreaterThan(0);
       expect(bodies[0].model).toBe(DEFAULT_GROQ_MODEL);
-      expect(bodies[0].model).not.toBe("llama-3.1-70b-versatile");
+      // Guard anti-regresión: el default no puede ser un ID retirado por Groq
+      // (https://console.groq.com/docs/deprecations, verificado 2026-11-22).
+      const RETIRED_MODELS = [
+        "llama-3.1-",
+        "llama-3.3-70b-versatile",
+        "qwen/qwen3-32b",
+        "qwen/qwen3.6-27b",
+        "groq/compound",
+      ];
+      for (const retired of RETIRED_MODELS) {
+        expect(DEFAULT_GROQ_MODEL.startsWith(retired)).toBe(false);
+        expect(bodies[0].model.startsWith(retired)).toBe(false);
+      }
     } finally {
       if (prevModel !== undefined) process.env.GROQ_MODEL = prevModel;
     }
