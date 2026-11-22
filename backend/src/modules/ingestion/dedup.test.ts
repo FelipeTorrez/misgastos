@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isDuplicate, squashMerchant } from "./dedup.js";
+import { isDuplicate, squashMerchant, isBetterClassification, betterClassificationPatch } from "./dedup.js";
 
 const baseExisting = [
   { id: "1", amount: 32990, date: "2026-08-24T15:30:00Z", merchant: "Lider", type: "expense", status: "confirmed" },
@@ -111,5 +111,74 @@ describe("Dedup T1/T2/T3 — caso real RedGloba 17-nov ($5.200, 3s)", () => {
     ];
     const cand = { amount: 5200, date: "2026-11-17", time: "21:06", merchant: null, type: "expense" };
     expect(isDuplicate(cand, existing as any)).toBeNull();
+  });
+});
+
+describe("Dedup — al unir filas gana la mejor clasificación (caso Frida Kahlo 22-nov)", () => {
+  // Caso real: Wallet (IA 0.90 → Otros) llegó 1,1s antes que Falabella
+  // (IA 0.95 → Compras). La dedup conservaba la primera aunque fuera peor.
+  const survivor = {
+    id: "fh-wallet",
+    amount: 32620,
+    date: "2026-11-22T20:53:00Z",
+    merchant: "Frida Kahlo",
+    type: "expense",
+    status: "confirmed",
+    category_id: "cat-otros",
+    source: "ai",
+    confidence: 0.9,
+  };
+
+  it("(a) superviviente ai 0.90 Otros + candidato ai 0.95 Compras → gana Compras 0.95", () => {
+    const cand = { category_id: "cat-compras", source: "ai", confidence: 0.95, merchant: "Frida Kahlo" };
+    expect(isBetterClassification(cand, survivor)).toBe(true);
+    expect(betterClassificationPatch(cand, survivor)).toMatchObject({
+      category_id: "cat-compras",
+      source: "ai",
+      confidence: 0.95,
+    });
+  });
+
+  it("(b) superviviente rule + candidato ai 0.99 → no se toca (la regla manda)", () => {
+    const ruleSurvivor = { ...survivor, source: "rule", confidence: 1 };
+    const cand = { category_id: "cat-compras", source: "ai", confidence: 0.99, merchant: "Frida Kahlo" };
+    expect(isBetterClassification(cand, ruleSurvivor)).toBe(false);
+    expect(betterClassificationPatch(cand, ruleSurvivor)).toBeNull();
+  });
+
+  it("(c) superviviente 'corrected' → nunca se pisa una corrección manual", () => {
+    const corrected = { ...survivor, status: "corrected" };
+    const cand = { category_id: "cat-compras", source: "ai", confidence: 0.99, merchant: "Frida Kahlo" };
+    expect(betterClassificationPatch(cand, corrected)).toBeNull();
+  });
+
+  it("(d) candidato con confianza menor → no se toca", () => {
+    const cand = { category_id: "cat-otros", source: "ai", confidence: 0.8, merchant: "Frida Kahlo" };
+    expect(isBetterClassification(cand, survivor)).toBe(false);
+    expect(betterClassificationPatch(cand, survivor)).toBeNull();
+  });
+
+  it("empate exacto (mismo source y confidence) → no se toca", () => {
+    const cand = { category_id: "cat-compras", source: "ai", confidence: 0.9, merchant: "Frida Kahlo" };
+    expect(betterClassificationPatch(cand, survivor)).toBeNull();
+  });
+
+  it("rule sobre rule con más confidence sí actualiza", () => {
+    const ruleSurvivor = { ...survivor, source: "rule", confidence: 0.95 };
+    const cand = { category_id: "cat-compras", source: "rule", confidence: 1, merchant: "Frida Kahlo" };
+    expect(betterClassificationPatch(cand, ruleSurvivor)).toMatchObject({ category_id: "cat-compras", confidence: 1 });
+  });
+
+  it("merchant más específico del candidato se propaga; el genérico no", () => {
+    const cand = { category_id: "cat-compras", source: "ai", confidence: 0.95, merchant: "Frida Kahlo Providencia" };
+    expect(betterClassificationPatch(cand, survivor)?.merchant).toBe("Frida Kahlo Providencia");
+    const generic = { ...cand, merchant: "Desconocido" };
+    expect(betterClassificationPatch(generic, survivor)?.merchant).toBeUndefined();
+  });
+
+  it("superviviente sin source/confidence (parser) pierde contra IA", () => {
+    const parserSurvivor = { ...survivor, source: "parser", confidence: 0.3 };
+    const cand = { category_id: "cat-compras", source: "ai", confidence: 0.7, merchant: "Frida Kahlo" };
+    expect(betterClassificationPatch(cand, parserSurvivor)).toMatchObject({ category_id: "cat-compras", source: "ai" });
   });
 });
