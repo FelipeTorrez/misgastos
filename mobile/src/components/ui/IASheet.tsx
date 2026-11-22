@@ -1,13 +1,11 @@
 import { useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
-import { C, R, SP, monthLabel } from "../../theme/tokens";
+import { C, monthLabel } from "../../theme/tokens";
 import { Sheet } from "./Sheet";
 import { MIcon } from "./MIcon";
 import { fmtCLP } from "../../lib/format";
-import { catIcon } from "../../theme/categoryIcons";
 import { Category } from "../../lib/categories";
 import { Budget } from "../../lib/useShellData";
-import { CategoryCircle } from "./CategoryCircle";
 
 type Props = {
   visible: boolean;

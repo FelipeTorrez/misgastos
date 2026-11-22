@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
-import { C, R, SP, monthLabel } from "../../theme/tokens";
+import { C, R, monthLabel } from "../../theme/tokens";
 import { MIcon } from "./MIcon";
 import { Sheet } from "./Sheet";
-import { shiftMonthStable, shiftDays, daysInMonth, DateRange } from "../../lib/billingCycle";
+import { shiftMonthStable, daysInMonth, DateRange } from "../../lib/billingCycle";
 
 const WEEK = ["L", "M", "M", "J", "V", "S", "D"];
 

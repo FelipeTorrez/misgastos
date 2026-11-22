@@ -25,7 +25,7 @@ function ClassificationChip({ tx }: { tx: any }) {
   );
 }
 
-export function Movimientos({ txs, truncated, limit, cats, month, filterCategory, onClearFilter, onRefresh }: {
+export function Movimientos({ txs, truncated, limit, cats, month: _month, filterCategory, onClearFilter, onRefresh }: {
   txs: any[];
   truncated?: boolean;
   limit?: number;

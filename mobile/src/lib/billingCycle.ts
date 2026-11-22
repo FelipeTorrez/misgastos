@@ -94,17 +94,3 @@ export function cycleDays(from: string, to: string): number {
   const t2 = Date.UTC(b.y, b.m - 1, b.d);
   return Math.round((t2 - t1) / 86400000) + 1;
 }
-
-/** Meses con su mes-número tocados por un rango (para UI). */
-export function rangeMonths(range: DateRange): string[] {
-  const out: string[] = [];
-  let cur = range.from.slice(0, 7);
-  const end = range.to.slice(0, 7);
-  while (cur <= end) {
-    out.push(cur);
-    const [y, m] = cur.split("-").map(Number);
-    const next = m === 12 ? `${y + 1}-01` : `${y}-${pad(m + 1)}`;
-    cur = next;
-  }
-  return out;
-}

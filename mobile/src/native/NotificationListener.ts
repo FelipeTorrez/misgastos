@@ -129,7 +129,7 @@ export async function postTestNotificationVisible(title: string, text: string): 
 }
 
 // Mock para probar en web/Expo Go sin banco real
-export async function simulateBankNotification(text: string, merchant = "Lider"): Promise<any> {
+export async function simulateBankNotification(text: string, _merchant = "Lider"): Promise<any> {
   const mock: BankNotification = {
     packageName: "cl.santander.mock",
     title: "Compra realizada",
