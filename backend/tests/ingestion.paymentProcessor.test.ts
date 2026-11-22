@@ -71,7 +71,7 @@ describe("Ingesta — cola de revisión para procesadores de pago", ()=>{
     expect(res.statusCode).toBe(201);
     const j = JSON.parse(res.body);
     expect(j.classification_source).toBe("rule");
-    expect(j.transaction.status).toBe("pending_ai");
+    expect(j.transaction.status).toBe("confirmed");
     expect(j.transaction.category_id).toBe("cat-alim");
     expect(j.transaction.metadata?.review_reason ?? null).toBeNull();
   });

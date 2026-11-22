@@ -321,12 +321,23 @@ async function ingestFromRaw(userId: string, rawEvent: any) {
         body: { raw_event: rawEvent, parsed: p, normalized, transaction: null, ai, dedup: { is_duplicate: false }, ignored_reason: "guard_none_type", next: "ignored guard none" }
       };
     }
+    // Semántica de status (lo que ve el usuario en los chips de Movimientos):
+    //  - confirmed      → nadie tiene que hacer nada: la regla del usuario (determinista)
+    //                     o una IA con confianza alta ya clasificaron.
+    //  - pending_review → hay un motivo concreto para revisar: duplicado (se resuelve solo
+    //                     con el original), procesador de pago (MG-013), IA en fallback
+    //                     (MG-015) o IA que pidió revisión explícitamente.
+    //  - pending_ai     → la IA respondió pero con confianza media: falta confirmación,
+    //                     sin un motivo puntual que discutir.
+    // Precedencia explícita: duplicate > procesador > fallback > needs_review > confirmado.
     let status: string, duplicateOf: string | null = null;
     if (dedupFound) { status = "duplicate"; duplicateOf = dedupFound.id; }
-    else if (classificationSource === "rule") status = "pending_ai";
-    else if (processorHit) status = "pending_review";
-    else if (classificationSource === "fallback") status = "pending_review";
-    else status = aiNeedsReview ? "pending_review" : "pending_ai";
+    else if (processorHit) status = "pending_review"; // MG-013: el banco trae al procesador, no al comercio
+    else if (classificationSource === "fallback" || (ai as any)?.provider_fallback) status = "pending_review"; // MG-015
+    else if (aiNeedsReview) status = "pending_review";
+    else if (classificationSource === "rule") status = "confirmed";
+    else if ((classificationSource === "ai" || classificationSource === "ai_cache") && aiConfidence >= 0.85) status = "confirmed";
+    else status = "pending_ai";
 
     // Resolver payment_method desde AI o fallback
     const paymentMethod = (ai?.payment_method as any) ?? (p.last4 ? "credit_card" as const : "unknown" as const);
