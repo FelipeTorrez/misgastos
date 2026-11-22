@@ -20,6 +20,9 @@ export type Candidate = {
   merchant: string | null;
   type: string; // expense/income/transfer
   accountHint?: string | null;
+  category_id?: string | null;
+  source?: string | null;
+  confidence?: number | null;
 };
 
 export type Existing = {
@@ -30,6 +33,10 @@ export type Existing = {
   type: string;
   account_id?: string | null;
   status: string;
+  category_id?: string | null;
+  source?: string | null;
+  confidence?: number | null;
+  metadata?: any;
 };
 
 function normalizeMerchant(m: string | null): string {
@@ -115,6 +122,63 @@ export function isDuplicate(candidate: Candidate, existing: Existing[], opts?: {
     // (opcional, por ahora no bloquea)
   }
   return null;
+}
+
+/**
+ * Calidad de la clasificación para decidir quién sobrevive en una dedup.
+ * Una regla del usuario (conocimiento explícito) manda sobre la IA; entre
+ * clasificaciones del mismo origen/peso gana la de mayor confianza.
+ */
+export type ClassificationInfo = {
+  category_id?: string | null;
+  source?: string | null;
+  confidence?: number | null;
+  merchant?: string | null;
+};
+
+function sourceRank(source: string | null | undefined): number {
+  const s = (source ?? "").toLowerCase();
+  if (s === "rule") return 2;
+  if (s === "ai" || s === "ai_cache") return 1;
+  return 0;
+}
+
+export function isBetterClassification(candidate: ClassificationInfo, survivor: ClassificationInfo): boolean {
+  const cRank = sourceRank(candidate.source);
+  const sRank = sourceRank(survivor.source);
+  if (cRank !== sRank) return cRank > sRank;
+  // Mismo origen (o ambos sin origen conocido): gana mayor confidence.
+  return (candidate.confidence ?? 0) > (survivor.confidence ?? 0);
+}
+
+/** true si el merchant del candidato dice más que el del superviviente. */
+export function isMoreSpecificMerchant(candidate: string | null | undefined, survivor: string | null | undefined): boolean {
+  const c = normalizeMerchant(candidate ?? null);
+  const s = normalizeMerchant(survivor ?? null);
+  if (!c || c === s) return false;
+  // Placeholder genérico: cualquier merchant concreto es mejor.
+  if (!s || s === "desconocido" || s === "transferencia") return true;
+  // Extensión del mismo comercio ("Frida Kahlo" → "Frida Kahlo Providencia").
+  return c.length > s.length && (c.includes(s) || s.includes(c));
+}
+
+/**
+ * Patch a aplicar al superviviente cuando el candidato trae mejor
+ * clasificación. null = no tocar nada: el superviviente ya es mejor, empatan,
+ * o el usuario corrigió a mano (status='corrected', intocable).
+ */
+export function betterClassificationPatch(
+  candidate: ClassificationInfo,
+  survivor: ClassificationInfo & { status?: string | null },
+): Record<string, any> | null {
+  if (survivor.status === "corrected") return null; // nunca pisar una corrección manual
+  if (!isBetterClassification(candidate, survivor)) return null;
+  const patch: Record<string, any> = {};
+  if (candidate.category_id) patch.category_id = candidate.category_id;
+  if (candidate.source) patch.source = candidate.source;
+  if (candidate.confidence !== undefined && candidate.confidence !== null) patch.confidence = candidate.confidence;
+  if (isMoreSpecificMerchant(candidate.merchant, survivor.merchant)) patch.merchant = candidate.merchant;
+  return Object.keys(patch).length ? patch : null;
 }
 
 // Score para futura UI "posible duplicado" (no usado en Phase 5 MVP)

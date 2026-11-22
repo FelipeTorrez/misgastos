@@ -2,7 +2,7 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { supabase, getUserId, isMockMode } from "../../lib/supabase.js";
 import { parseEmail, normalizeForAI } from "./parser.js";
-import { isDuplicate } from "./dedup.js";
+import { isDuplicate, betterClassificationPatch } from "./dedup.js";
 import { mockStore } from "../../lib/mockStore.js";
 import { normalizeMerchant, findBestRuleMatch, isPaymentProcessor } from "../../lib/merchantNorm.js";
 import { get as classifyCacheGet, set as classifyCacheSet } from "../../lib/classifyCache.js";
@@ -298,12 +298,15 @@ async function ingestFromRaw(userId: string, rawEvent: any) {
     const effectiveDate = (ai as any)?.date ?? p.date ?? new Date().toISOString().slice(0, 10);
     const type = (ai?.transaction_type as any) ?? (finalDirection === "in" ? "income" : finalDirection === "internal" ? "transfer" : p.operation === "transfer" ? "transfer" : "expense");
     if (type !== "none") {
-      const candidate = { amount: p.amount, date: effectiveDate, time: p.time, merchant: finalMerchant, type };
+      const candidate = {
+        amount: p.amount, date: effectiveDate, time: p.time, merchant: finalMerchant, type,
+        category_id: finalCategoryId, source: classificationSource, confidence: aiConfidence,
+      };
       let recentTxs: any[];
       if (isMockMode) {
         recentTxs = mockStore.listTransactions(userId);
       } else {
-        const { data: recent, error } = await supabase.from("transactions").select("id, amount, date, merchant, type, status").eq("user_id", userId).order("date", { ascending: false }).limit(50);
+        const { data: recent, error } = await supabase.from("transactions").select("id, amount, date, merchant, type, status, category_id, confidence, source, metadata").eq("user_id", userId).order("date", { ascending: false }).limit(50);
         if (error) return { status: 500, body: { error: `dedup query: ${error.message}` } };
         recentTxs = (recent as any[]) ?? [];
       }
@@ -368,6 +371,34 @@ async function ingestFromRaw(userId: string, rawEvent: any) {
       const { data: tx, error } = await supabase.from("transactions").insert(payload).select().single();
       if (error) return { status: 500, body: { error: `transactions insert: ${error.message}`, payload } };
       transaction = tx;
+    }
+
+    // Dedup §15+: no gana la fila que llegó primero, gana la mejor clasificación.
+    // El superviviente adopta categoría/merchant/confianza del candidato cuando
+    // este es mejor, y deja rastro del id absorbido en metadata.merged_from.
+    // Nunca se pisa una corrección manual (status='corrected').
+    if (dedupFound && transaction?.id) {
+      const mergePatch = betterClassificationPatch(
+        { category_id: finalCategoryId, source: classificationSource, confidence: aiConfidence, merchant: finalMerchant },
+        dedupFound,
+      );
+      if (mergePatch) {
+        const prevMetadata =
+          dedupFound.metadata && typeof dedupFound.metadata === "object" ? dedupFound.metadata : {};
+        const mergedFrom: string[] = Array.isArray(prevMetadata.merged_from) ? [...prevMetadata.merged_from] : [];
+        if (!mergedFrom.includes(transaction.id)) mergedFrom.push(transaction.id);
+        const survivorPatch = { ...mergePatch, metadata: { ...prevMetadata, merged_from: mergedFrom } };
+        if (isMockMode) {
+          mockStore.updateTransaction(userId, dedupFound.id, survivorPatch);
+        } else {
+          const { error } = await supabase
+            .from("transactions")
+            .update({ ...survivorPatch, updated_at: new Date().toISOString() })
+            .eq("id", dedupFound.id)
+            .eq("user_id", userId);
+          if (error) console.error("dedup classification merge:", error.message);
+        }
+      }
     }
   }
 

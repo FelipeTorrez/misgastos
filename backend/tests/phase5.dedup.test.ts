@@ -31,6 +31,8 @@ function query(table:string){
           txStore.push(r); return { data: r, error: null };
         }})
       }),
+      // La dedup puede mejorar al superviviente (mejor clasificación).
+      update: (_patch: any) => ({ eq: () => ({ eq: () => Promise.resolve({ error: null }) }) }),
       then: (cb:any)=> cb({data: txStore, error:null})
     } as any;
   }
