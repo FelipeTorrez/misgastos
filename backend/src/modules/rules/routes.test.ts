@@ -3,12 +3,11 @@ import Fastify from "fastify";
 
 const { mockRules, nextId } = vi.hoisted(() => {
   const mockRules: any[] = [];
-  let nextId = 1;
   return { mockRules, nextId: { v: 1 } };
 });
 
 vi.mock("../../lib/supabase.js", () => {
-  const query = (table: string) => {
+  const query = (_table: string) => {
     return {
       select: () => ({
         eq: (f1: string, v1: any) => ({

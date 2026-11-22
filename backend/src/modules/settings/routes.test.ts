@@ -64,7 +64,7 @@ describe("Config ciclo de facturación — Settings API", () => {
   });
 
   it("PUT actualiza en vez de duplicar", async () => {
-    const a = await app.inject({ method: "PUT", url: "/v1/settings", payload: { billing_cycle_day: 20, billing_cycle_enabled: true } });
+    await app.inject({ method: "PUT", url: "/v1/settings", payload: { billing_cycle_day: 20, billing_cycle_enabled: true } });
     const b = await app.inject({ method: "PUT", url: "/v1/settings", payload: { billing_cycle_day: 22, billing_cycle_enabled: true } });
     expect(b.statusCode).toBe(200);
     expect(settingsRows.length).toBe(1);

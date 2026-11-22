@@ -25,7 +25,7 @@ await app.register(ruleRoutes);
 await app.register(settingsRoutes);
 
 // 404
-app.setNotFoundHandler((req, reply) => reply.status(404).send({ error: "not found" }));
+app.setNotFoundHandler((_req, reply) => reply.status(404).send({ error: "not found" }));
 
 const port = Number(process.env.PORT || 3000);
 if (process.env.NODE_ENV !== "test") {

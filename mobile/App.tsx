@@ -102,7 +102,7 @@ export default function App() {
   }
 
   function applyCycleSettings(day: number, enabled: boolean) {
-    setSettings(prev => ({ billing_cycle_day: day, billing_cycle_enabled: enabled }));
+    setSettings(() => ({ billing_cycle_day: day, billing_cycle_enabled: enabled }));
     if (enabled) setPeriod({ type: "range", ...currentCycle(day) });
     else setPeriod({ type: "month", month: currentMonth() });
   }

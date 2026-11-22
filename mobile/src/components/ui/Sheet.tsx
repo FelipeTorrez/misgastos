@@ -1,4 +1,4 @@
-import { Modal, View, Text, TouchableOpacity, StyleSheet, TouchableWithoutFeedback } from "react-native";
+import { Modal, View, Text, StyleSheet, TouchableWithoutFeedback } from "react-native";
 import { C, R, SP } from "../../theme/tokens";
 
 /** Sheet inferior redondeada. Cerrar tocando el backdrop o el asa. */
