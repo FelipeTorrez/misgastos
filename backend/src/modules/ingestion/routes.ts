@@ -512,6 +512,8 @@ export async function ingestionRoutes(app: FastifyInstance) {
       const enriched = enrichPending(rows);
       reply.header("x-pending-count", String(enriched.summary.count));
       reply.header("x-pending-total", String(enriched.summary.total));
+      reply.header("x-pending-total-transactions", String(enriched.summary.total_transactions));
+      reply.header("x-pending-promos", String(enriched.summary.promos));
       return enriched.rows;
     }
     if (pendingOnly) {
@@ -525,6 +527,8 @@ export async function ingestionRoutes(app: FastifyInstance) {
       const enriched = enrichPending(pending.slice(offset, offset + limit));
       reply.header("x-pending-count", String(enriched.summary.count));
       reply.header("x-pending-total", String(enriched.summary.total));
+      reply.header("x-pending-total-transactions", String(enriched.summary.total_transactions));
+      reply.header("x-pending-promos", String(enriched.summary.promos));
       return enriched.rows;
     }
     const builder: any = supabase.from("raw_events").select("*").eq("user_id", userId).order("received_at", { ascending: false });
