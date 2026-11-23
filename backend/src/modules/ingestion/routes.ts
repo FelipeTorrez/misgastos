@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { supabase, getUserId, isMockMode } from "../../lib/supabase.js";
 import { parseEmail, normalizeForAI } from "./parser.js";
+import { enrichPending } from "./pending.js";
 import { isDuplicate, betterClassificationPatch, dedupKey } from "./dedup.js";
 import { mockStore } from "../../lib/mockStore.js";
 import { normalizeMerchant, findBestRuleMatch, isPaymentProcessor } from "../../lib/merchantNorm.js";
@@ -495,7 +496,7 @@ export async function ingestionRoutes(app: FastifyInstance) {
     const result = await processIngestion(parsed.data, userId);
     return reply.status(result.status).send(result.body);
   });
-  app.get("/v1/raw-events", async (req: any) => {
+  app.get("/v1/raw-events", async (req: any, reply: any) => {
     const userId = getUserId(req);
     const q = (req.query ?? {}) as any;
     let limit = Number.parseInt(String(q.limit ?? "50"), 10);
@@ -506,7 +507,12 @@ export async function ingestionRoutes(app: FastifyInstance) {
     offset = Math.max(0, Math.floor(offset));
     const pendingOnly = String(q.pending ?? "") === "1" || String(q.pending ?? "").toLowerCase() === "true";
     if (isMockMode) {
-      return mockStore.listRawEvents(userId, { limit, offset, pending: pendingOnly });
+      const rows = mockStore.listRawEvents(userId, { limit, offset, pending: pendingOnly });
+      if (!pendingOnly) return rows;
+      const enriched = enrichPending(rows);
+      reply.header("x-pending-count", String(enriched.summary.count));
+      reply.header("x-pending-total", String(enriched.summary.total));
+      return enriched.rows;
     }
     if (pendingOnly) {
       // metadata.guard es JSONB: el filtro se resuelve en memoria sobre los
@@ -516,7 +522,10 @@ export async function ingestionRoutes(app: FastifyInstance) {
       const rows = ((data ?? []) as any[]);
       const linked = await linkedRawEventIds(userId, rows.map(r => r.id));
       const pending = rows.filter(r => r?.metadata?.guard?.is_transaction !== false && !linked.has(r.id));
-      return pending.slice(offset, offset + limit);
+      const enriched = enrichPending(pending.slice(offset, offset + limit));
+      reply.header("x-pending-count", String(enriched.summary.count));
+      reply.header("x-pending-total", String(enriched.summary.total));
+      return enriched.rows;
     }
     const builder: any = supabase.from("raw_events").select("*").eq("user_id", userId).order("received_at", { ascending: false });
     if (typeof builder.range === "function") {
