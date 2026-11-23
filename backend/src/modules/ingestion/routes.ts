@@ -9,6 +9,7 @@ import { normalizeMerchant, findBestRuleMatch, isPaymentProcessor } from "../../
 import { get as classifyCacheGet, set as classifyCacheSet } from "../../lib/classifyCache.js";
 import { allowlistHit } from "./allowlist.js";
 import { inferDirection } from "../../ai/prompts/agente-financiero.js";
+import { resolveType, resolveStatus } from "./classify.js";
 
 function toTitleCase(s: string): string {
   return s.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
@@ -297,7 +298,7 @@ async function ingestFromRaw(userId: string, rawEvent: any) {
   let dedupFound: any = null;
   if (p.amount !== null) {
     const effectiveDate = (ai as any)?.date ?? p.date ?? new Date().toISOString().slice(0, 10);
-    const type = (ai?.transaction_type as any) ?? (finalDirection === "in" ? "income" : finalDirection === "internal" ? "transfer" : p.operation === "transfer" ? "transfer" : "expense");
+    const type = resolveType({ aiType: ai?.transaction_type ?? null, direction: finalDirection, operation: p.operation });
     if (type !== "none") {
       const candidate = {
         amount: p.amount, date: effectiveDate, time: p.time, merchant: finalMerchant, type,
@@ -318,7 +319,7 @@ async function ingestFromRaw(userId: string, rawEvent: any) {
   // Transaction — solo si guard pasó y hay monto
   let transaction: any = null;
   if (p.amount !== null && !(ai && ai.is_transaction === false)) {
-    const type = (ai?.transaction_type as any) ?? (finalDirection === "in" ? "income" : finalDirection === "internal" ? "transfer" : p.operation === "transfer" ? "transfer" : "expense");
+    const type = resolveType({ aiType: ai?.transaction_type ?? null, direction: finalDirection, operation: p.operation });
     if (type === "none") {
       return {
         status: 200,
@@ -326,22 +327,17 @@ async function ingestFromRaw(userId: string, rawEvent: any) {
       };
     }
     // Semántica de status (lo que ve el usuario en los chips de Movimientos):
-    //  - confirmed      → nadie tiene que hacer nada: la regla del usuario (determinista)
-    //                     o una IA con confianza alta ya clasificaron.
-    //  - pending_review → hay un motivo concreto para revisar: duplicado (se resuelve solo
-    //                     con el original), procesador de pago (MG-013), IA en fallback
-    //                     (MG-015) o IA que pidió revisión explícitamente.
-    //  - pending_ai     → la IA respondió pero con confianza media: falta confirmación,
-    //                     sin un motivo puntual que discutir.
-    // Precedencia explícita: duplicate > procesador > fallback > needs_review > confirmado.
-    let status: string, duplicateOf: string | null = null;
-    if (dedupFound) { status = "duplicate"; duplicateOf = dedupFound.id; }
-    else if (processorHit) status = "pending_review"; // MG-013: el banco trae al procesador, no al comercio
-    else if (classificationSource === "fallback" || (ai as any)?.provider_fallback) status = "pending_review"; // MG-015
-    else if (aiNeedsReview) status = "pending_review";
-    else if (classificationSource === "rule") status = "confirmed";
-    else if ((classificationSource === "ai" || classificationSource === "ai_cache") && aiConfidence >= 0.85) status = "confirmed";
-    else status = "pending_ai";
+    // duplicado, procesador de pago (MG-013), IA en fallback (MG-015),
+    // needs_review o confianza alta. Precedencia en ./classify.ts (resolveStatus).
+    const status = resolveStatus({
+      dedupFound,
+      processorHit,
+      classificationSource,
+      aiConfidence,
+      aiNeedsReview,
+      providerFallback: Boolean((ai as any)?.provider_fallback),
+    });
+    const duplicateOf: string | null = dedupFound ? dedupFound.id : null;
 
     // Resolver payment_method desde AI o fallback
     const paymentMethod = (ai?.payment_method as any) ?? (p.last4 ? "credit_card" as const : "unknown" as const);
