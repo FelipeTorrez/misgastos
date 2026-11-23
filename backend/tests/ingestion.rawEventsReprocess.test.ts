@@ -31,6 +31,11 @@ describe("Ingesta — raw_events sin gasto: listar pending y reprocesar", () => 
     const list = JSON.parse(pending.body);
     expect(Array.isArray(list)).toBe(true);
     expect(list.map((r: any) => r.id)).toContain(rawEventId);
+    // enriquecido con lo que el parser no puede sacar del correo
+    const pendingRow = list.find((r: any) => r.id === rawEventId);
+    expect(pendingRow.parsed_amount).toBeNull();
+    expect(pending.headers["x-pending-count"]).toBe("1");
+    expect(pending.headers["x-pending-total"]).toBe("0");
 
     const reprocess = await app.inject({ method: "POST", url: `/v1/raw-events/${rawEventId}/reprocess` });
     expect(reprocess.statusCode).toBe(422);
@@ -55,8 +60,14 @@ describe("Ingesta — raw_events sin gasto: listar pending y reprocesar", () => 
       raw_content: "Compra por $32.990 en Lider con tarjeta terminada en 1234 - 24/08/2026 15:30 - Santander",
     });
 
-    const pendingBefore = JSON.parse((await app.inject({ method: "GET", url: "/v1/raw-events?pending=1" })).body);
+    const pendingBeforeRes = await app.inject({ method: "GET", url: "/v1/raw-events?pending=1" });
+    const pendingBefore = JSON.parse(pendingBeforeRes.body);
     expect(pendingBefore.map((r: any) => r.id)).toContain(raw.id);
+    const beforeRow = pendingBefore.find((r: any) => r.id === raw.id);
+    expect(beforeRow.parsed_amount).toBe(32990);
+    expect(beforeRow.parsed_merchant).toBe("Lider");
+    expect(pendingBeforeRes.headers["x-pending-count"]).toBe("1");
+    expect(pendingBeforeRes.headers["x-pending-total"]).toBe("32990");
 
     const first = await app.inject({ method: "POST", url: `/v1/raw-events/${raw.id}/reprocess` });
     expect(first.statusCode).toBe(200);
@@ -77,8 +88,10 @@ describe("Ingesta — raw_events sin gasto: listar pending y reprocesar", () => 
     expect(mockStore.listTransactions("user-test")).toHaveLength(1);
 
     // ya vinculado → deja de estar pendiente
-    const pendingAfter = JSON.parse((await app.inject({ method: "GET", url: "/v1/raw-events?pending=1" })).body);
+    const pendingAfterRes = await app.inject({ method: "GET", url: "/v1/raw-events?pending=1" });
+    const pendingAfter = JSON.parse(pendingAfterRes.body);
     expect(pendingAfter.map((r: any) => r.id)).not.toContain(raw.id);
+    expect(pendingAfterRes.headers["x-pending-total"]).toBe("0");
   });
 
   it("pending excluye raw_events descartados por el guard de IA", async () => {
