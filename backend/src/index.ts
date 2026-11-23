@@ -9,11 +9,29 @@ import { balanceRoutes } from "./modules/balance/routes.js";
 import { ingestionRoutes } from "./modules/ingestion/routes.js";
 import { ruleRoutes } from "./modules/rules/routes.js";
 import { settingsRoutes } from "./modules/settings/routes.js";
+import { supabase, isMockMode } from "./lib/supabase.js";
+import { checkSchema, type SchemaCheckResult } from "./lib/schemaCheck.js";
 
 const app = Fastify({ logger: true });
 await app.register(cors, { origin: true });
 
-app.get("/health", async () => ({ status: "ok", version: "0.4.1-finan", phase: "Agente Financiero Finan (promo-hardening)" }));
+// Verificación única al arrancar: /health no consulta la base por request.
+// No aborta el boot (los devs sin Supabase tienen que poder levantar la app).
+// En la suite no se corre: igual que el listen, un test no tiene que bootear.
+let schemaStatus: SchemaCheckResult = { ok: true, missing: [] };
+if (!isMockMode && process.env.NODE_ENV !== "test") {
+  schemaStatus = await checkSchema(supabase, app.log);
+  if (!schemaStatus.ok) {
+    app.log.error(`schemaCheck: faltan columnas en la base → ${schemaStatus.missing.join(", ")}`);
+  }
+}
+
+app.get("/health", async () => ({
+  status: schemaStatus.ok ? "ok" : "degraded",
+  version: "0.4.1-finan",
+  phase: "Agente Financiero Finan (promo-hardening)",
+  schema: schemaStatus,
+}));
 
 await app.register(categoryRoutes);
 await app.register(accountRoutes);
