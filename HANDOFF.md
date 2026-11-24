@@ -1,6 +1,6 @@
 # HANDOFF — Contexto completo para continuar desarrollo
 
-> Última actualización: 2026-11-21 (noche) — **Movimientos: los 4 chips de filtro entran sin scroll ni corte** ✅ — backend `309/309` (36 files) · mobile `101/101` (12 files) · `tsc --noEmit` 0 en ambos · APK release instalado y verificado on-device (`uiautomator`: `Todas`/`Pendientes`/`Confirmadas`/`Revisar` completos en una fila, el último termina en x≈918 px de 1080). Ver §4 (-28).
+> Última actualización: 2026-11-24 — **Ingesta sin fecha guarda el día de Chile, no el UTC (MG-087)** ✅ — backend `369/369` (42 files) · mobile `107/107` (13 files) · `tsc --noEmit` 0 en ambos · `dateRange.test.ts` 15/15 con `TZ=UTC`, `America/Santiago` y `Asia/Tokyo` · **mergeado en `main` local, sin push** (Railway y el APK siguen con la versión anterior). Ver §4 (-31).
 >
 > Anterior (2026-11-14) — **Orquestador automático: MG-001 / MG-003 / MG-004 mergeados a main** ✅ — `185/185` tests (24 files), `tsc --noEmit` 0. El pipeline (hermes brain + opencode coder) propone ideas, las implementa en rama aislada y mergea solo con tests verdes. MG-003 dejó `tsc` roto (`path` readonly en zod) → corregido, y `npx tsc --noEmit` quedó como gate obligatorio del pipeline. Ver §4 (-20).
 >
@@ -171,6 +171,15 @@ Durante la sesión del 25/08 hubo **OTRA IA/sesión editando este mismo repo sim
 ---
 
 ## 4. Cambios de la última sesión (lo más reciente primero)
+
+-31. **Ingesta sin fecha: el día guardado ahora es el de Chile (MG-087)** — 2026-11-24:
+    - **El defecto.** Cuando el correo/notificación no traía fecha, `ingestion/routes.ts` guardaba `new Date().toISOString()` (instante UTC real) y **todo el backend agrupa por `date.slice(0,10)`**. Una compra a las 22:30 del 19-08 quedaba guardada como **20-08** y saltaba al ciclo siguiente (borde 20→20), mientras la app la mostraba el **19-08** porque `wallYMD` (mobile) sí distingue instante de hora de pared. La base y la pantalla decían días distintos.
+    - **El fix.** `chileWallStamp()` en `lib/dateRange.ts` (Intl + `APP_TZ`, nunca `toISOString()` ni `getHours()`) devuelve `YYYY-MM-DDTHH:mm:00Z`, la misma forma de hora de pared que ya reconoce `wallYMD`. Se usa en los 3 caminos de `ingestFromRaw` (fallback del payload, fallback del cache de clasificación y `effectiveDate` de la dedup) y en los 2 fallbacks de fecha de `GroqProvider`.
+    - **Medición sobre datos reales (382 filas, jun–nov 2026):** 341 (89%) venían por el fallback con milisegundos y 41 con hora de pared. **64 filas (17%) tienen día Chile ≠ día UTC**: el backend las tiene en el día corrido y la app las muestra bien; **$742.723** de gastos están en el día equivocado. En este corte **0** cruzaban el borde 20→20, así que hoy el daño visible es la inconsistencia día-base/día-pantalla; el fix llega antes del primer caso que sí saltaría de ciclo. El número honesto es ese: previene, no arregla filas viejas (eso requeriría un backfill aparte).
+    - **Riesgo de transición declarado:** una notificación duplicada que llegue *después* del deploy, de una compra ingerida *antes* del deploy, dentro de la ventana de dedup (60 min), ya no se reconocería: `sameDay` compara el día y el candidato pasó de 20-08 (UTC) a 19-08 (pared). Ventana angosta, alrededor del deploy.
+    - **Gate:** backend **42 archivos / 369 tests**, mobile **13 / 107**, `tsc --noEmit` 0 en ambos. `dateRange.test.ts` 15/15 con `TZ=UTC`, `TZ=America/Santiago` y `TZ=Asia/Tokyo` → el helper no depende del TZ del proceso (el test compara contra literales `2026-08-19T22:30:00Z` y `2026-11-23T23:00:00Z`, no contra la misma función).
+    - **Alcance:** el coder tocó `src/ai/providers/GroqProvider.ts`, que no estaba en la lista de archivos de la idea. Es consistente (los 2 fallbacks de fecha del provider tenían el mismo defecto), pero es más de lo pedido.
+    - **Estado:** mergeado en `main` local (`31f9175`), **sin push** (`push: false` en el pipeline). Railway y el APK del celular siguen con la versión anterior.
 
 -30. **Pendientes con monto (MG-078/084) y la corrección del número (MG-086) + limpieza de la decisión de estado (MG-085)** — 2026-11-23:
     - **MG-084 — health chequea el esquema al arrancar.** Respuesta directa al incidente de ayer: `GET /health` ahora devuelve `schema: { ok, missing[] }` con 3 verificaciones (`transactions.metadata`, `transactions.dedup_key`, `raw_events.metadata`) que corren **una vez al boot**, nunca bloquean el arranque ni se repiten por request. Si falta una columna, `status: "degraded"` y el nombre exacto en `missing`. No arregla el esquema: avisa.
