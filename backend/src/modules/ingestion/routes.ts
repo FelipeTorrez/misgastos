@@ -10,6 +10,7 @@ import { get as classifyCacheGet, set as classifyCacheSet } from "../../lib/clas
 import { allowlistHit } from "./allowlist.js";
 import { inferDirection } from "../../ai/prompts/agente-financiero.js";
 import { resolveType, resolveStatus } from "./classify.js";
+import { chileWallStamp } from "../../lib/dateRange.js";
 
 function toTitleCase(s: string): string {
   return s.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
@@ -128,7 +129,7 @@ async function ingestFromRaw(userId: string, rawEvent: any) {
           merchant: cached.merchant,
           counterparty: null,
           category: cached.category,
-          date: p.date ?? new Date().toISOString().slice(0, 10),
+          date: p.date ?? chileWallStamp().slice(0, 10),
           account_hint: null,
           payment_method: cached.payment_method,
           installment: null,
@@ -297,7 +298,7 @@ async function ingestFromRaw(userId: string, rawEvent: any) {
   // Dedup §15 — solo si hay transacción real y monto
   let dedupFound: any = null;
   if (p.amount !== null) {
-    const effectiveDate = (ai as any)?.date ?? p.date ?? new Date().toISOString().slice(0, 10);
+    const effectiveDate = (ai as any)?.date ?? p.date ?? chileWallStamp();
     const type = resolveType({ aiType: ai?.transaction_type ?? null, direction: finalDirection, operation: p.operation });
     if (type !== "none") {
       const candidate = {
@@ -367,7 +368,7 @@ async function ingestFromRaw(userId: string, rawEvent: any) {
       category_id: finalCategoryId,
       direction, counterparty: finalCounterparty ?? ai?.counterparty ?? null,
       payment_method: paymentMethod,
-      date: ((ai as any)?.date ?? p.date) ? `${((ai as any)?.date ?? p.date) as string}T${p.time ?? "12:00"}:00Z` : new Date().toISOString(),
+      date: ((ai as any)?.date ?? p.date) ? `${((ai as any)?.date ?? p.date) as string}T${p.time ?? "12:00"}:00Z` : chileWallStamp(),
       status, confidence: aiConfidence,
       is_recurring_candidate: ai?.is_recurring_candidate ?? false, duplicate_of: duplicateOf,
       source: classificationSource,

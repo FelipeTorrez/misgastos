@@ -1,5 +1,6 @@
 import { AgentOutput, AgentInput, AgentOutputSchema } from "./AIProvider.js";
 import { FINAN_SYSTEM_PROMPT, inferDirection } from "../prompts/agente-financiero.js";
+import { chileWallStamp } from "../../lib/dateRange.js";
 
 // Groq via OpenAI-compatible API con structured outputs (JSON Schema)
 // Docs: https://console.groq.com/docs/text-chat#json-mode
@@ -136,7 +137,7 @@ export class GroqProvider {
         merchant: "Desconocido",
         counterparty: null,
         category: "otros",
-        date: input.parser_hints.date ?? new Date().toISOString().slice(0, 10),
+        date: input.parser_hints.date ?? chileWallStamp().slice(0, 10),
         account_hint: null,
         payment_method: "unknown",
         installment: null,
@@ -231,7 +232,7 @@ export class GroqProvider {
       merchant: merchant ?? "Desconocido",
       counterparty,
       category,
-      date: input.parser_hints.date ?? new Date().toISOString().slice(0, 10),
+      date: input.parser_hints.date ?? chileWallStamp().slice(0, 10),
       account_hint: null,
       payment_method,
       installment: null,

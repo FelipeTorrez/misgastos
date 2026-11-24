@@ -104,3 +104,29 @@ export function currentMonthLocal(
   const month = parts.find((p) => p.type === "month")?.value;
   return `${year}-${month}`;
 }
+
+/**
+ * Hora de pared de la zona de la app (America/Santiago) para un instante real,
+ * con la forma "YYYY-MM-DDTHH:mm:00Z" que reconoce `wallYMD` en mobile.
+ *
+ * Se usa cuando el correo/notificación no trae fecha: guardar `toISOString()`
+ * (UTC) hacía que una compra a las 22:00 del 19-08 quedara como 20-08 y saltara
+ * al ciclo siguiente (borde 20→20). Con esto el día guardado es el de Chile.
+ * NO usar getHours()/toISOString(): dependen del TZ del proceso (Railway = UTC).
+ */
+export function chileWallStamp(
+  now: Date = new Date(),
+  tz: string = process.env.APP_TZ ?? "America/Santiago",
+): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}:00Z`;
+}

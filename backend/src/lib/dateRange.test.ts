@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { monthOverlaps, rangeDays, addDays, toDate, fmt, daysInMonth, monthBounds, currentMonthLocal, shiftMonths } from "./dateRange.js";
+import { monthOverlaps, rangeDays, addDays, toDate, fmt, daysInMonth, monthBounds, currentMonthLocal, chileWallStamp, shiftMonths } from "./dateRange.js";
 
 describe("#Filtro rango — helpers de fecha (ciclo 20→20)", () => {
   it("monthOverlaps agrupa correctamente un ciclo que cruza 2 meses", () => {
@@ -63,6 +63,16 @@ describe("#Filtro rango — helpers de fecha (ciclo 20→20)", () => {
   it("currentMonthLocal cambia a diciembre pasada la medianoche en Santiago", () => {
     // 2026-12-01T04:00Z = 01-dic 01:00 en Santiago → ya es diciembre.
     expect(currentMonthLocal(new Date("2026-12-01T04:00:00Z"))).toBe("2026-12");
+  });
+
+  it("chileWallStamp guarda el día de Chile en invierno (UTC-4)", () => {
+    // 20-08 02:30 UTC = 19-08 22:30 en Santiago → no salta al ciclo 20→20.
+    expect(chileWallStamp(new Date("2026-08-20T02:30:00Z"))).toBe("2026-08-19T22:30:00Z");
+  });
+
+  it("chileWallStamp guarda el día de Chile con DST (UTC-3, DS 98/2026)", () => {
+    // 24-11 02:00 UTC = 23-11 23:00 en Santiago.
+    expect(chileWallStamp(new Date("2026-11-24T02:00:00Z"))).toBe("2026-11-23T23:00:00Z");
   });
 
   it("shiftMonths ubica el inicio del ciclo anterior (20→20)", () => {
