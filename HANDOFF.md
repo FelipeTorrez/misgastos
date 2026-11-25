@@ -1,6 +1,8 @@
 # HANDOFF — Contexto completo para continuar desarrollo
 
-> Última actualización: 2026-11-25 — **Gasto manual = `manual` (no "IA 100%") y corregir cierra la revisión (MG-093/094)** ✅ — backend `374/374` (42 files) · mobile `111/111` (13 files) · `tsc --noEmit` 0 en ambos · **mergeado en `main` local, sin push** (`origin/main` 7 commits atrás: Railway y el APK siguen con la versión anterior). Ver §4 (-32).
+> Última actualización: 2026-11-25 (noche) — **Pendientes: los headers `x-pending-*` resumen la cola completa, no la página** ✅ — backend `386/386` (43 files) · `tsc --noEmit` 0 · mobile sin cambios · **en el árbol de trabajo, sin commit ni push**. Ver §4 (-33).
+>
+> Anterior (2026-11-25) — **Gasto manual = `manual` (no "IA 100%") y corregir cierra la revisión (MG-093/094)** ✅ — backend `374/374` (42 files) · mobile `111/111` (13 files) · `tsc --noEmit` 0 en ambos · **mergeado en `main` local, sin push** (`origin/main` 7 commits atrás: Railway y el APK siguen con la versión anterior). Ver §4 (-32).
 >
 > Anterior (2026-11-24) — **Ingesta sin fecha guarda el día de Chile, no el UTC (MG-087)** ✅ — backend `369/369` (42 files) · mobile `107/107` (13 files) · `tsc --noEmit` 0 en ambos · `dateRange.test.ts` 15/15 con `TZ=UTC`, `America/Santiago` y `Asia/Tokyo` · **mergeado en `main` local, sin push**. Ver §4 (-31).
 >
@@ -27,7 +29,7 @@
 | Backend | Node.js + Fastify + tsx (watch) + Node 22 en Railway (prod), Zod para validación |
 | DB | Supabase (Postgres + RLS) — **conectada en cloud (proyecto bqnktrfwoxetbirrodmo), modo real activo** |
 | AI | Groq API (`qwen/qwen3.8-27b` actual, antes `llama-3.1-70b`) con fallback mock — **Groq real activo** |
-| Tests | Vitest — **309/309 passing** (36 files) · mobile `101/101` (12 files) · `mobile: tsc --noEmit` **0 errores** · `tests/ingestion.guard.test.ts` + `tests/agent-financiero.test.ts` + `src/modules/{settings,ranges}` |
+| Tests | Vitest — **386/386 passing** (43 files) · mobile `101/101` (12 files) · `mobile: tsc --noEmit` **0 errores** · `tests/ingestion.guard.test.ts` + `tests/agent-financiero.test.ts` + `src/modules/{settings,ranges}` |
 
 ### Estado de fases
 - ✅ Phase 0: Spec + ADRs 001–007 (`spec/`, `docs/decisions/`)
@@ -173,6 +175,11 @@ Durante la sesión del 25/08 hubo **OTRA IA/sesión editando este mismo repo sim
 ---
 
 ## 4. Cambios de la última sesión (lo más reciente primero)
+
+-33. **Pendientes: los headers `x-pending-*` resumen la cola completa, no la página** — 2026-11-25:
+    - **El defecto (medición de la tarea en prod).** Con el mismo endpoint y solo cambiando `limit`: `?pending=1` → `x-pending-count: 50`, `x-pending-total: 1.402.502`; `limit=100` → `100`, `1.660.326`; `limit=500` → `483`, `146.418.428`. `enrichPending()` solo veía las filas de la página (`ingestion/routes.ts` armaba los headers con `enriched.summary`), así que MG-083 habría mostrado "50 correos, $1.402.502" cuando la cola real son 483 y $6,3M de movimientos reales. Encima, el nombre `x-pending-total` invitaba a usar la suma con promos.
+    - **El fix.** `GET /v1/raw-events?pending=1` ahora lee **toda** la cola pendiente (paginando `mockStore.listRawEvents` en mock y `.range` en modo real, tope 2000) y calcula `enrichPending()` una vez sobre el set completo; el body sigue siendo el slice `limit/offset`. Headers: `x-pending-count` = filas de la cola completa, `x-pending-returned` = filas del body, `x-pending-total` = `summary.total_transactions` (ya NO suma promos), `x-pending-total-con-promos` = la suma vieja con promos. `x-pending-total-transactions` y `x-pending-promos` se mantienen. Ningún consumidor en `mobile/src` (grep `x-pending` = 0).
+    - **Verificación.** `backend/tests/ingestion.pending.test.ts` (nuevo, 3 casos): 120 pendientes de $1.000 con `limit=20` → body 20 filas, `x-pending-count 120`, `x-pending-returned 20`, `x-pending-total 120000`; `offset=100` pagina el body sin mover los headers; 2 compras + 1 promo de $500.000 → `x-pending-total 20000` vs `x-pending-total-con-promos 520000`, `x-pending-promos 1`. Gate: backend `386/386` (43 files), `tsc --noEmit` 0.
 
 -32. **El gasto manual ya no dice "IA 100%" y corregir cierra la revisión (MG-093/094)** — 2026-11-25:
     - **MG-093 — origen `manual` explícito.** `POST /v1/transactions` no seteaba `source` y la columna tiene `default 'ai'` (003): todo gasto escrito a mano se mostraba como **"IA 100%"**; en modo mock salía `Sin clasificar` y entraba a la pestaña Revisar. Ahora la ruta escribe `source='manual'`, `dedup.sourceRank('manual')=3` (una clasificación humana no se pisa al deduplicar) y mobile agrega `Manual` a `SOURCE_LABELS`, lo saca de `needsAudit` y omite el porcentaje en `provenanceLabel` igual que `rule`.
@@ -582,7 +589,7 @@ PLAN-dev-client-fix.md                        → análisis root cause native mo
 Invoke-RestMethod http://localhost:3000/health
 
 # 2. Tests verdes?
-powershell -ExecutionPolicy Bypass -Command "cd backend; npx vitest run"    # esperar: 36 files, 309 tests passed (incluye ingestion.guard + agent-financiero + settings/ranges)
+powershell -ExecutionPolicy Bypass -Command "cd backend; npx vitest run"    # esperar: 43 files, 386 tests passed (incluye ingestion.guard + agent-financiero + settings/ranges + ingestion.pending)
 
 # 3. Flujo reglas funciona?
 Invoke-RestMethod -Uri http://localhost:3000/v1/rules -Method POST -Headers @{"Content-Type"="application/json"} -Body '{"merchant_normalized":"test","preferred_category_id":"00000000-0000-0000-0000-000000000001"}'

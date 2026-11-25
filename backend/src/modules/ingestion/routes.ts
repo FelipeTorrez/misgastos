@@ -466,6 +466,49 @@ async function linkedRawEventIds(userId: string, ids: string[]): Promise<Set<str
   }
 }
 
+/**
+ * Los headers x-pending-* resumen la COLA completa, no la página. Para eso hay
+ * que leer todas las filas pendientes (tope de seguridad 2000) y paginar la
+ * respuesta después. Ver MG-083/MG-086: con limit=50 los headers publicaban
+ * $1,4M mientras la cola completa sumaba $146M con promos ($6,3M reales).
+ */
+const PENDING_FETCH_MAX = 2000;
+const PENDING_FETCH_PAGE = 500;
+
+function listAllPendingMock(userId: string): any[] {
+  const all: any[] = [];
+  while (all.length < PENDING_FETCH_MAX) {
+    const page = mockStore.listRawEvents(userId, { limit: PENDING_FETCH_PAGE, offset: all.length, pending: true });
+    all.push(...page);
+    if (page.length < PENDING_FETCH_PAGE) break;
+  }
+  return all.slice(0, PENDING_FETCH_MAX);
+}
+
+async function listAllPendingReal(userId: string): Promise<any[]> {
+  const pending: any[] = [];
+  let offset = 0;
+  while (pending.length < PENDING_FETCH_MAX) {
+    const builder: any = supabase.from("raw_events").select("*").eq("user_id", userId).order("received_at", { ascending: false });
+    const canRange = typeof builder.range === "function";
+    const { data } = canRange
+      ? await builder.range(offset, offset + PENDING_FETCH_PAGE - 1)
+      : await builder.limit(offset + PENDING_FETCH_PAGE);
+    const fetched = ((data ?? []) as any[]);
+    // Sin .range() (mock de tests): el builder limita a offset+page y aquí se corta la página.
+    const rows = canRange ? fetched : fetched.slice(offset, offset + PENDING_FETCH_PAGE);
+    if (!rows.length) break;
+    const linked = await linkedRawEventIds(userId, rows.map(r => r.id));
+    for (const row of rows) {
+      if (pending.length >= PENDING_FETCH_MAX) break;
+      if (row?.metadata?.guard?.is_transaction !== false && !linked.has(row.id)) pending.push(row);
+    }
+    if (rows.length < PENDING_FETCH_PAGE) break;
+    offset += PENDING_FETCH_PAGE;
+  }
+  return pending;
+}
+
 async function markReprocessed(rawEvent: any, at: string) {
   const metadata = { ...(rawEvent.metadata ?? {}), reprocessed_at: at };
   rawEvent.metadata = metadata;
@@ -503,30 +546,25 @@ export async function ingestionRoutes(app: FastifyInstance) {
     if (!Number.isFinite(offset)) offset = 0;
     offset = Math.max(0, Math.floor(offset));
     const pendingOnly = String(q.pending ?? "") === "1" || String(q.pending ?? "").toLowerCase() === "true";
-    if (isMockMode) {
-      const rows = mockStore.listRawEvents(userId, { limit, offset, pending: pendingOnly });
-      if (!pendingOnly) return rows;
-      const enriched = enrichPending(rows);
-      reply.header("x-pending-count", String(enriched.summary.count));
-      reply.header("x-pending-total", String(enriched.summary.total));
-      reply.header("x-pending-total-transactions", String(enriched.summary.total_transactions));
-      reply.header("x-pending-promos", String(enriched.summary.promos));
-      return enriched.rows;
-    }
     if (pendingOnly) {
-      // metadata.guard es JSONB: el filtro se resuelve en memoria sobre los
-      // raw_events más recientes y luego se aplica limit/offset.
-      const all: any = supabase.from("raw_events").select("*").eq("user_id", userId).order("received_at", { ascending: false });
-      const { data } = typeof all.range === "function" ? await all.range(0, 499) : await all.limit(500);
-      const rows = ((data ?? []) as any[]);
-      const linked = await linkedRawEventIds(userId, rows.map(r => r.id));
-      const pending = rows.filter(r => r?.metadata?.guard?.is_transaction !== false && !linked.has(r.id));
-      const enriched = enrichPending(pending.slice(offset, offset + limit));
+      // El summary se calcula sobre TODA la cola pendiente (metadata.guard es
+      // JSONB, así que el filtro se resuelve en memoria). El body lleva solo la
+      // página pedida; x-pending-returned deja claro cuántas filas trae.
+      const allPending = isMockMode ? listAllPendingMock(userId) : await listAllPendingReal(userId);
+      const enriched = enrichPending(allPending);
+      const page = enriched.rows.slice(offset, offset + limit);
       reply.header("x-pending-count", String(enriched.summary.count));
-      reply.header("x-pending-total", String(enriched.summary.total));
+      reply.header("x-pending-returned", String(page.length));
+      // x-pending-total ya NO suma promos/créditos preaprobados: es la plata
+      // real de la cola. La suma con promos queda en x-pending-total-con-promos.
+      reply.header("x-pending-total", String(enriched.summary.total_transactions));
       reply.header("x-pending-total-transactions", String(enriched.summary.total_transactions));
+      reply.header("x-pending-total-con-promos", String(enriched.summary.total));
       reply.header("x-pending-promos", String(enriched.summary.promos));
-      return enriched.rows;
+      return page;
+    }
+    if (isMockMode) {
+      return mockStore.listRawEvents(userId, { limit, offset });
     }
     const builder: any = supabase.from("raw_events").select("*").eq("user_id", userId).order("received_at", { ascending: false });
     if (typeof builder.range === "function") {
