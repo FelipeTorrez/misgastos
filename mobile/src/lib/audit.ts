@@ -4,6 +4,7 @@ export interface AuditTx {
   source?: string | null;
   classification_source?: string | null;
   confidence?: number | null;
+  status?: string | null;
 }
 
 export interface ClassificationAudit {
@@ -66,12 +67,15 @@ export function classificationAudit(txs: AuditTx[]): ClassificationAudit {
 
 /**
  * Cola de revisión: lo que la IA clasificó dudoso.
+ * Excluye lo ya resuelto por el usuario (confirmed/corrected): PATCH limpia
+ * review_reason, pero una tx corregida no debe seguir sumando en la cola.
  * Incluye needsAudit(tx) o confianza baja, ordenado por
  * confianza ascendente (null/ausente primero).
  */
 export function reviewQueue<T extends AuditTx>(txs: T[]): { items: T[]; count: number } {
   const list = Array.isArray(txs) ? txs : [];
   const items = list.filter((t) => {
+    if (t?.status === "corrected" || t?.status === "confirmed") return false;
     const n = norm(t);
     return needsAudit(n) || confidenceBand(n.confidence) === "baja";
   });

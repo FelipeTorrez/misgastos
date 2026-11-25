@@ -94,4 +94,14 @@ describe("reviewQueue", () => {
     ]);
     expect(count).toBe(1);
   });
+
+  it("ignora txs ya resueltas (status corrected/confirmed)", () => {
+    const { items, count } = reviewQueue([
+      { source: "fallback", confidence: null, status: "corrected" },
+      { source: "fallback", confidence: null, status: "confirmed" },
+      { source: "fallback", confidence: null, status: "pending_review" },
+    ]);
+    expect(count).toBe(1);
+    expect(items[0].status).toBe("pending_review");
+  });
 });
