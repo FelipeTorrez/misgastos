@@ -21,6 +21,10 @@ describe("provenanceLabel", () => {
   it("confidence null no agrega porcentaje", () => {
     expect(provenanceLabel({ source: "ai", confidence: null })).toBe("IA");
   });
+
+  it("manual con confidence 1 → 'Manual' sin porcentaje", () => {
+    expect(provenanceLabel({ source: "manual", confidence: 1 })).toBe("Manual");
+  });
 });
 
 describe("needsAudit", () => {
@@ -28,6 +32,11 @@ describe("needsAudit", () => {
     expect(needsAudit({ source: "ai", confidence: 0.95 })).toBe(false);
     expect(needsAudit({ source: "rule" })).toBe(false);
     expect(needsAudit({ source: "ai_cache", confidence: 0.92 })).toBe(false);
+  });
+
+  it("manual no necesita auditoría (lo escribió el usuario)", () => {
+    expect(needsAudit({ source: "manual" })).toBe(false);
+    expect(needsAudit({ source: "manual", confidence: 1 })).toBe(false);
   });
 
   it("fallback necesita auditoría", () => {

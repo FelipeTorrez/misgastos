@@ -7,6 +7,7 @@ export interface ClassifiedTx {
 
 const SOURCE_LABELS: Record<string, string> = {
   ai: "IA",
+  manual: "Manual",
   rule: "Regla",
   ai_cache: "IA (cache)",
   fallback: "Respaldo sin IA",
@@ -34,16 +35,16 @@ function formatConfidence(confidence: number | null | undefined): string | null 
 }
 
 /** Etiqueta de procedencia: "IA 95%", "Regla", "Respaldo sin IA", ... */
-/** Una regla siempre es 100%: el porcentaje no aporta, se omite. */
+/** Una regla o un gasto manual siempre son 100%: el porcentaje no aporta, se omite. */
 export function provenanceLabel(tx: ClassifiedTx): string {
   const base = sourceLabel(tx?.source);
-  if (tx?.source === "rule") return base;
+  if (tx?.source === "rule" || tx?.source === "manual") return base;
   const pct = formatConfidence(tx?.confidence);
   return pct ? `${base} ${pct}` : base;
 }
 
-/** true cuando el origen no es ai/rule/ai_cache y merece revisión. */
+/** true cuando el origen no es ai/rule/ai_cache/manual y merece revisión. */
 export function needsAudit(tx: ClassifiedTx): boolean {
   const s = tx?.source;
-  return s !== "ai" && s !== "rule" && s !== "ai_cache";
+  return s !== "ai" && s !== "rule" && s !== "ai_cache" && s !== "manual";
 }

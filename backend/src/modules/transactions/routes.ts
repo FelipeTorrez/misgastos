@@ -87,6 +87,9 @@ export async function transactionRoutes(app: FastifyInstance) {
     const parsed = CreateTx.safeParse(req.body);
     if (!parsed.success) return reply.status(400).send(parsed.error.flatten());
     const payload: any = { ...parsed.data, user_id: userId };
+    // Movimiento creado a mano por el usuario: origen 'manual' (no 'IA').
+    // Sin esto la DB aplica su default 'ai' y la app lo muestra como "IA 100%".
+    payload.source = "manual";
     // Normaliza merchant para display
     if (payload.merchant) payload.merchant = toTitleCase(payload.merchant.trim());
     // Si no trae categoría, intenta aplicar regla existente (ej: Jumbo → Supermercado)

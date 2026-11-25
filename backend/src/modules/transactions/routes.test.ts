@@ -6,7 +6,7 @@ const { db } = vi.hoisted(() => {
 });
 
 function makeTable(tables: any, tname: string) {
-  const state: any = { filters: [], limit: null, order: null, single: false };
+  const state: any = { filters: [], limit: null, order: null, single: false, insert: null };
   const apply = () => {
     let rows = [...(tables[tname] ?? [])];
     for (const f of state.filters) {
@@ -29,7 +29,14 @@ function makeTable(tables: any, tname: string) {
     order: (f: string, o: any) => { state.order = { f, o }; return b; },
     select: (_c: string) => b,
     update: (p: any) => { state.patch = p; return b; },
+    insert: (p: any) => { state.insert = p; return b; },
     single: () => {
+      if (state.insert) {
+        const rows = tables[tname] ?? (tables[tname] = []);
+        const row = { id: `t${rows.length + 1}`, ...state.insert };
+        rows.push(row);
+        return { data: row, error: null };
+      }
       const rows = apply();
       if (state.patch) {
         if (!rows.length) return { data: null, error: { message: "not found" } };
@@ -256,5 +263,49 @@ describe("PATCH /v1/transactions/:id — whitelist zod", () => {
     const list = await app.inject({ method: "GET", url: "/v1/transactions?month=2026-03" });
     expect(list.statusCode).toBe(200);
     expect(list.json().find((t: any) => t.id === "dup")).toMatchObject({ status: "confirmed" });
+  });
+});
+
+describe("POST /v1/transactions — gasto manual", () => {
+  async function buildApp() {
+    const app = Fastify();
+    await app.register(transactionRoutes);
+    return app;
+  }
+
+  it("sin source en el body → source 'manual' (no el default 'ai' de la DB)", async () => {
+    const app = await buildApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/transactions",
+      payload: {
+        merchant: "almacen don pedro",
+        amount: 3500,
+        type: "expense",
+        category_id: "00000000-0000-0000-0000-000000000001",
+        date: "2026-03-10",
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().source).toBe("manual");
+    expect(db.transactions[0].source).toBe("manual");
+  });
+
+  it("source enviado por el cliente no puede falsear el origen", async () => {
+    const app = await buildApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/transactions",
+      payload: {
+        merchant: "Almacen Don Pedro",
+        amount: 3500,
+        type: "expense",
+        category_id: "00000000-0000-0000-0000-000000000001",
+        date: "2026-03-10",
+        source: "ai",
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().source).toBe("manual");
   });
 });

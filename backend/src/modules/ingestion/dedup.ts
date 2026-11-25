@@ -214,6 +214,7 @@ export type ClassificationInfo = {
 
 function sourceRank(source: string | null | undefined): number {
   const s = (source ?? "").toLowerCase();
+  if (s === "manual") return 3; // clasificación humana: intocable
   if (s === "rule") return 2;
   if (s === "ai" || s === "ai_cache") return 1;
   return 0;
