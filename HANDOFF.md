@@ -1,6 +1,8 @@
 # HANDOFF — Contexto completo para continuar desarrollo
 
-> Última actualización: 2026-11-24 — **Ingesta sin fecha guarda el día de Chile, no el UTC (MG-087)** ✅ — backend `369/369` (42 files) · mobile `107/107` (13 files) · `tsc --noEmit` 0 en ambos · `dateRange.test.ts` 15/15 con `TZ=UTC`, `America/Santiago` y `Asia/Tokyo` · **mergeado en `main` local, sin push** (Railway y el APK siguen con la versión anterior). Ver §4 (-31).
+> Última actualización: 2026-11-25 — **Gasto manual = `manual` (no "IA 100%") y corregir cierra la revisión (MG-093/094)** ✅ — backend `374/374` (42 files) · mobile `111/111` (13 files) · `tsc --noEmit` 0 en ambos · **mergeado en `main` local, sin push** (`origin/main` 7 commits atrás: Railway y el APK siguen con la versión anterior). Ver §4 (-32).
+>
+> Anterior (2026-11-24) — **Ingesta sin fecha guarda el día de Chile, no el UTC (MG-087)** ✅ — backend `369/369` (42 files) · mobile `107/107` (13 files) · `tsc --noEmit` 0 en ambos · `dateRange.test.ts` 15/15 con `TZ=UTC`, `America/Santiago` y `Asia/Tokyo` · **mergeado en `main` local, sin push**. Ver §4 (-31).
 >
 > Anterior (2026-11-14) — **Orquestador automático: MG-001 / MG-003 / MG-004 mergeados a main** ✅ — `185/185` tests (24 files), `tsc --noEmit` 0. El pipeline (hermes brain + opencode coder) propone ideas, las implementa en rama aislada y mergea solo con tests verdes. MG-003 dejó `tsc` roto (`path` readonly en zod) → corregido, y `npx tsc --noEmit` quedó como gate obligatorio del pipeline. Ver §4 (-20).
 >
@@ -171,6 +173,13 @@ Durante la sesión del 25/08 hubo **OTRA IA/sesión editando este mismo repo sim
 ---
 
 ## 4. Cambios de la última sesión (lo más reciente primero)
+
+-32. **El gasto manual ya no dice "IA 100%" y corregir cierra la revisión (MG-093/094)** — 2026-11-25:
+    - **MG-093 — origen `manual` explícito.** `POST /v1/transactions` no seteaba `source` y la columna tiene `default 'ai'` (003): todo gasto escrito a mano se mostraba como **"IA 100%"**; en modo mock salía `Sin clasificar` y entraba a la pestaña Revisar. Ahora la ruta escribe `source='manual'`, `dedup.sourceRank('manual')=3` (una clasificación humana no se pisa al deduplicar) y mobile agrega `Manual` a `SOURCE_LABELS`, lo saca de `needsAudit` y omite el porcentaje en `provenanceLabel` igual que `rule`.
+    - **MG-094 — el motivo de revisión se limpia al corregir.** `PATCH /v1/transactions/:id` cambiaba `status` a `corrected` pero dejaba `metadata.review_reason` y `reviewQueue` no miraba el status: un movimiento ya arreglado seguía sumando en "Revisar (N)" y mostrando el motivo viejo para siempre. Ahora el PATCH hace read-merge-write del jsonb (`review_reason: null`, conserva `dedup_key`/`merged_from`) y `reviewQueue` excluye `corrected` y `confirmed`.
+    - **Revisión rotativa de pantallas (miércoles) — 2 hallazgos medidos, sin mergear:** **MG-096** `Presupuesto.tsx:126` postea el presupuesto copiado con `month: prev.from`, así que "Copiar del ciclo anterior" reescribe el ciclo **pasado** y avisa "N límites importados" mientras el ciclo actual sigue vacío (comparar con `save()`, línea 87, que usa `range.from`). **MG-097** `Reglas.tsx:21/24` convierten cualquier fallo de red en lista vacía y la pantalla afirma "No hay reglas aún": con la API caída el usuario cree que perdió sus reglas (ya existe `components/ui/ErrorState.tsx` desde MG-055).
+    - **Gate:** backend **42 archivos / 374 tests**, mobile **13 / 111**, `tsc --noEmit` 0 en ambos. Árbol limpio.
+    - **Estado:** mergeado en `main` local (`dc8698e`, `eb4bf61`), **sin push** (`push: false`). `origin/main` queda 7 commits atrás y Railway/APK siguen con la versión anterior.
 
 -31. **Ingesta sin fecha: el día guardado ahora es el de Chile (MG-087)** — 2026-11-24:
     - **El defecto.** Cuando el correo/notificación no traía fecha, `ingestion/routes.ts` guardaba `new Date().toISOString()` (instante UTC real) y **todo el backend agrupa por `date.slice(0,10)`**. Una compra a las 22:30 del 19-08 quedaba guardada como **20-08** y saltaba al ciclo siguiente (borde 20→20), mientras la app la mostraba el **19-08** porque `wallYMD` (mobile) sí distingue instante de hora de pared. La base y la pantalla decían días distintos.
