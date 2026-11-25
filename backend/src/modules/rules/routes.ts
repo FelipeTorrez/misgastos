@@ -4,6 +4,7 @@ import { isMockMode } from "../../lib/supabase.js";
 import { supabase, getUserId } from "../../lib/supabase.js";
 import { mockStore } from "../../lib/mockStore.js";
 import { normalizeMerchant } from "../../lib/merchantNorm.js";
+import { UuidParam } from "../../lib/queryDates.js";
 
 const CreateRule = z.object({
   merchant_normalized: z.string().min(1).max(100).transform(v => normalizeMerchant(v)),
@@ -41,26 +42,32 @@ export async function ruleRoutes(app: FastifyInstance) {
   });
 
   app.patch("/v1/rules/:id", async (req: any, reply) => {
+    const parsedId = UuidParam.safeParse(req.params.id);
+    if (!parsedId.success) return reply.status(400).send(parsedId.error.flatten());
+    const id = parsedId.data;
     const userId = getUserId(req);
     const parsed = UpdateRule.safeParse(req.body);
     if (!parsed.success) return reply.status(400).send(parsed.error.flatten());
     if (isMockMode) {
-      const rule = mockStore.updateRule(userId, req.params.id, parsed.data);
+      const rule = mockStore.updateRule(userId, id, parsed.data);
       if (!rule) return reply.status(404).send({ error: "rule not found" });
       return { ...rule, mocked: true };
     }
-    const { data, error } = await supabase.from("rules").update({ ...parsed.data, updated_at: new Date().toISOString() }).eq("id", req.params.id).eq("user_id", userId).select().single();
+    const { data, error } = await supabase.from("rules").update({ ...parsed.data, updated_at: new Date().toISOString() }).eq("id", id).eq("user_id", userId).select().single();
     if (error) return reply.status(400).send({ error: error.message });
     return data;
   });
 
   app.delete("/v1/rules/:id", async (req: any, reply) => {
+    const parsedId = UuidParam.safeParse(req.params.id);
+    if (!parsedId.success) return reply.status(400).send(parsedId.error.flatten());
+    const id = parsedId.data;
     const userId = getUserId(req);
     if (isMockMode) {
-      mockStore.deleteRule(userId, req.params.id);
+      mockStore.deleteRule(userId, id);
       return { ok: true };
     }
-    const { error } = await supabase.from("rules").delete().eq("id", req.params.id).eq("user_id", userId);
+    const { error } = await supabase.from("rules").delete().eq("id", id).eq("user_id", userId);
     if (error) return reply.status(400).send({ error: error.message });
     return { ok: true };
   });

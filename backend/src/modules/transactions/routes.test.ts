@@ -5,6 +5,12 @@ const { db } = vi.hoisted(() => {
   return { db: { transactions: [] as any[], raw_events: [] as any[], error: null as any } };
 });
 
+const TX1 = "11111111-1111-4111-8111-111111111111";
+const TX2 = "22222222-2222-4222-8222-222222222222";
+const TX_MISSING = "33333333-3333-4333-8333-333333333333";
+const TX_DUP = "44444444-4444-4444-8444-444444444444";
+const TX_ORIG = "55555555-5555-4555-8555-555555555555";
+
 function makeTable(tables: any, tname: string) {
   const state: any = { filters: [], limit: null, order: null, single: false, insert: null };
   const apply = () => {
@@ -160,6 +166,35 @@ describe("GET /v1/transactions — truncado en 200", () => {
   });
 });
 
+describe("GET /v1/transactions — filtros category_id/account_id deben ser uuid", () => {
+  it("?category_id=abc → 400 (no 503 db_unavailable)", async () => {
+    const app = Fastify();
+    await app.register(transactionRoutes);
+    const res = await app.inject({ method: "GET", url: "/v1/transactions?category_id=abc" });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("?account_id=abc → 400 (no 503 db_unavailable)", async () => {
+    const app = Fastify();
+    await app.register(transactionRoutes);
+    const res = await app.inject({ method: "GET", url: "/v1/transactions?account_id=abc" });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("?category_id uuid válido → 200 y filtra", async () => {
+    const cat = "00000000-0000-4000-8000-000000000001";
+    db.transactions = [
+      { id: TX1, user_id: "u1", date: "2026-03-10", amount: 1000, type: "expense", merchant: "A", category_id: cat },
+      { id: TX2, user_id: "u1", date: "2026-03-11", amount: 2000, type: "expense", merchant: "B", category_id: "00000000-0000-4000-8000-000000000002" },
+    ];
+    const app = Fastify();
+    await app.register(transactionRoutes);
+    const res = await app.inject({ method: "GET", url: `/v1/transactions?category_id=${cat}` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().map((t: any) => t.id)).toEqual([TX1]);
+  });
+});
+
 describe("GET /v1/transactions/:id — correo original", () => {
   async function buildApp() {
     const app = Fastify();
@@ -169,43 +204,58 @@ describe("GET /v1/transactions/:id — correo original", () => {
 
   it("devuelve transacción + raw_event resumido", async () => {
     db.transactions = [
-      { id: "t1", user_id: "u1", date: "2026-03-10", amount: 1000, type: "expense", merchant: "Lider", status: "confirmed", raw_event_id: "re1" },
+      { id: TX1, user_id: "u1", date: "2026-03-10", amount: 1000, type: "expense", merchant: "Lider", status: "confirmed", raw_event_id: "re1" },
     ];
     db.raw_events = [
       { id: "re1", user_id: "u1", source: "gmail", sender: "santander@notificaciones.cl", subject: "Compra realizada", received_at: "2026-03-10T15:30:00Z", raw_content: "Compra por $1.000 en Lider" },
     ];
     const app = await buildApp();
-    const res = await app.inject({ method: "GET", url: "/v1/transactions/t1" });
+    const res = await app.inject({ method: "GET", url: `/v1/transactions/${TX1}` });
     expect(res.statusCode).toBe(200);
     const j = res.json();
-    expect(j.id).toBe("t1");
+    expect(j.id).toBe(TX1);
     expect(j.raw_event).toMatchObject({ id: "re1", source: "gmail", sender: "santander@notificaciones.cl", subject: "Compra realizada", raw_content: "Compra por $1.000 en Lider" });
     expect(j.raw_event.received_at).toBe("2026-03-10T15:30:00Z");
   });
 
   it("raw_event null si la tx no tiene raw_event_id", async () => {
     db.transactions = [
-      { id: "t2", user_id: "u1", date: "2026-03-10", amount: 500, type: "expense", merchant: "Manual", status: "confirmed" },
+      { id: TX2, user_id: "u1", date: "2026-03-10", amount: 500, type: "expense", merchant: "Manual", status: "confirmed" },
     ];
     const app = await buildApp();
-    const res = await app.inject({ method: "GET", url: "/v1/transactions/t2" });
+    const res = await app.inject({ method: "GET", url: `/v1/transactions/${TX2}` });
     expect(res.statusCode).toBe(200);
     expect(res.json().raw_event).toBeNull();
   });
 
   it("id inexistente → 404", async () => {
     const app = await buildApp();
-    const res = await app.inject({ method: "GET", url: "/v1/transactions/nope" });
+    const res = await app.inject({ method: "GET", url: `/v1/transactions/${TX_MISSING}` });
     expect(res.statusCode).toBe(404);
     expect(res.json()).toMatchObject({ error: "transaction not found" });
+  });
+
+  it("id malformado → 400 (no 503 db_unavailable)", async () => {
+    const app = await buildApp();
+    const res = await app.inject({ method: "GET", url: "/v1/transactions/abc123" });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toHaveProperty("fieldErrors");
   });
 
   it("Supabase caído → 503 con code db_unavailable", async () => {
     db.error = { message: "db down" };
     const app = await buildApp();
-    const res = await app.inject({ method: "GET", url: "/v1/transactions/t1" });
+    const res = await app.inject({ method: "GET", url: `/v1/transactions/${TX1}` });
     expect(res.statusCode).toBe(503);
     expect(res.json()).toMatchObject({ error: "db down", code: "db_unavailable" });
+  });
+
+  it("error 22P02 de Postgres → 400 id invalido (no 503)", async () => {
+    db.error = { message: 'invalid input syntax for type uuid: "abc123"', code: "22P02" };
+    const app = await buildApp();
+    const res = await app.inject({ method: "GET", url: `/v1/transactions/${TX1}` });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: "id invalido" });
   });
 });
 
@@ -218,10 +268,10 @@ describe("PATCH /v1/transactions/:id — whitelist zod", () => {
 
   it("acepta {status:'confirmed'} → 200 y actualiza", async () => {
     db.transactions = [
-      { id: "t1", user_id: "u1", date: "2026-03-10", amount: 1000, type: "expense", merchant: "Lider", status: "pending_review" },
+      { id: TX1, user_id: "u1", date: "2026-03-10", amount: 1000, type: "expense", merchant: "Lider", status: "pending_review" },
     ];
     const app = await buildApp();
-    const res = await app.inject({ method: "PATCH", url: "/v1/transactions/t1", payload: { status: "confirmed" } });
+    const res = await app.inject({ method: "PATCH", url: `/v1/transactions/${TX1}`, payload: { status: "confirmed" } });
     expect(res.statusCode).toBe(200);
     expect(res.json().status).toBe("confirmed");
     expect(db.transactions[0].status).toBe("confirmed");
@@ -229,10 +279,10 @@ describe("PATCH /v1/transactions/:id — whitelist zod", () => {
 
   it("rechaza user_id → 400 y conserva user_id/amount", async () => {
     db.transactions = [
-      { id: "t1", user_id: "u1", date: "2026-03-10", amount: 1000, type: "expense", merchant: "Lider", status: "pending_review" },
+      { id: TX1, user_id: "u1", date: "2026-03-10", amount: 1000, type: "expense", merchant: "Lider", status: "pending_review" },
     ];
     const app = await buildApp();
-    const res = await app.inject({ method: "PATCH", url: "/v1/transactions/t1", payload: { user_id: "otro", amount: 500 } });
+    const res = await app.inject({ method: "PATCH", url: `/v1/transactions/${TX1}`, payload: { user_id: "otro", amount: 500 } });
     expect(res.statusCode).toBe(400);
     expect(db.transactions[0].user_id).toBe("u1");
     expect(db.transactions[0].amount).toBe(1000);
@@ -240,21 +290,21 @@ describe("PATCH /v1/transactions/:id — whitelist zod", () => {
 
   it("rechaza clave desconocida → 400", async () => {
     db.transactions = [
-      { id: "t1", user_id: "u1", date: "2026-03-10", amount: 1000, type: "expense", merchant: "Lider", status: "pending_review" },
+      { id: TX1, user_id: "u1", date: "2026-03-10", amount: 1000, type: "expense", merchant: "Lider", status: "pending_review" },
     ];
     const app = await buildApp();
-    const res = await app.inject({ method: "PATCH", url: "/v1/transactions/t1", payload: { categoria_typo: 1 } });
+    const res = await app.inject({ method: "PATCH", url: `/v1/transactions/${TX1}`, payload: { categoria_typo: 1 } });
     expect(res.statusCode).toBe(400);
     expect(db.transactions[0].status).toBe("pending_review");
   });
 
   it("restaura un falso duplicado: duplicate → confirmed con duplicate_of null", async () => {
     db.transactions = [
-      { id: "orig", user_id: "u1", date: "2026-03-10", amount: 1000, type: "expense", merchant: "Lider", status: "confirmed" },
-      { id: "dup", user_id: "u1", date: "2026-03-10", amount: 1000, type: "expense", merchant: "Jumbo", status: "duplicate", duplicate_of: "orig" },
+      { id: TX_ORIG, user_id: "u1", date: "2026-03-10", amount: 1000, type: "expense", merchant: "Lider", status: "confirmed" },
+      { id: TX_DUP, user_id: "u1", date: "2026-03-10", amount: 1000, type: "expense", merchant: "Jumbo", status: "duplicate", duplicate_of: TX_ORIG },
     ];
     const app = await buildApp();
-    const res = await app.inject({ method: "PATCH", url: "/v1/transactions/dup", payload: { status: "confirmed" } });
+    const res = await app.inject({ method: "PATCH", url: `/v1/transactions/${TX_DUP}`, payload: { status: "confirmed" } });
     expect(res.statusCode).toBe(200);
     expect(res.json().status).toBe("confirmed");
     expect(res.json().duplicate_of).toBeNull();
@@ -262,13 +312,19 @@ describe("PATCH /v1/transactions/:id — whitelist zod", () => {
     expect(db.transactions[1].duplicate_of).toBeNull();
     const list = await app.inject({ method: "GET", url: "/v1/transactions?month=2026-03" });
     expect(list.statusCode).toBe(200);
-    expect(list.json().find((t: any) => t.id === "dup")).toMatchObject({ status: "confirmed" });
+    expect(list.json().find((t: any) => t.id === TX_DUP)).toMatchObject({ status: "confirmed" });
+  });
+
+  it("id malformado → 400 sin tocar la DB", async () => {
+    const app = await buildApp();
+    const res = await app.inject({ method: "PATCH", url: "/v1/transactions/abc123", payload: { status: "confirmed" } });
+    expect(res.statusCode).toBe(400);
   });
 
   it("corregir categoría limpia metadata.review_reason y conserva el resto del metadata", async () => {
     db.transactions = [
       {
-        id: "t1",
+        id: TX1,
         user_id: "u1",
         date: "2026-03-10",
         amount: 1000,
@@ -282,7 +338,7 @@ describe("PATCH /v1/transactions/:id — whitelist zod", () => {
     const app = await buildApp();
     const res = await app.inject({
       method: "PATCH",
-      url: "/v1/transactions/t1",
+      url: `/v1/transactions/${TX1}`,
       payload: { category_id: "00000000-0000-0000-0000-000000000001", update_rule: false },
     });
     expect(res.statusCode).toBe(200);

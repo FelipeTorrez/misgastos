@@ -12,6 +12,10 @@ function isCalendarDate(s: string): boolean {
   return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
 }
 
+// Ids de ruta (:id). Validarlos acá evita que un id basura llegue a Postgres
+// y reviente como 22P02 (que la app confundía con "db caída").
+export const UuidParam = z.string().uuid();
+
 export const MonthQuery = z
   .string()
   .regex(MONTH_RE, "month debe ser YYYY-MM válido");
@@ -54,8 +58,8 @@ export const TransactionsQuery = z
     month: MonthQuery.optional(),
     from: DateQuery.optional(),
     to: DateQuery.optional(),
-    category_id: z.string().optional(),
-    account_id: z.string().optional(),
+    category_id: z.string().uuid().optional(),
+    account_id: z.string().uuid().optional(),
     limit: z.coerce.number().int().min(1).max(500).optional(),
   })
   .refine(rangeOk, rangeRefine);
