@@ -264,6 +264,34 @@ describe("PATCH /v1/transactions/:id — whitelist zod", () => {
     expect(list.statusCode).toBe(200);
     expect(list.json().find((t: any) => t.id === "dup")).toMatchObject({ status: "confirmed" });
   });
+
+  it("corregir categoría limpia metadata.review_reason y conserva el resto del metadata", async () => {
+    db.transactions = [
+      {
+        id: "t1",
+        user_id: "u1",
+        date: "2026-03-10",
+        amount: 1000,
+        type: "expense",
+        merchant: "Lider",
+        status: "pending_review",
+        source: "fallback",
+        metadata: { review_reason: "payment_processor", merged_from: ["tx-a"] },
+      },
+    ];
+    const app = await buildApp();
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/v1/transactions/t1",
+      payload: { category_id: "00000000-0000-0000-0000-000000000001", update_rule: false },
+    });
+    expect(res.statusCode).toBe(200);
+    const j = res.json();
+    expect(j.review_reason).toBeNull();
+    expect(j.status).toBe("corrected");
+    expect(db.transactions[0].metadata.review_reason).toBeNull();
+    expect(db.transactions[0].metadata.merged_from).toEqual(["tx-a"]);
+  });
 });
 
 describe("POST /v1/transactions — gasto manual", () => {

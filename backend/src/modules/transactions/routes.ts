@@ -154,7 +154,16 @@ export async function transactionRoutes(app: FastifyInstance) {
     if (patchData.status === "confirmed" || patchData.status === "corrected") {
       patchData.duplicate_of = null;
     }
+    // Al corregir (categoría y/o status 'corrected') el motivo de revisión deja
+    // de aplicar: la cola no debe seguir mostrando "Pagaste a un procesador".
+    // PostgREST reemplaza el jsonb completo, así que se hace merge local para
+    // conservar dedup_key/merged_from.
+    const clearsReviewReason = !!parsed.data.category_id || patchData.status === "corrected";
     if (isMockMode) {
+      const existing = mockStore.getTransaction(userId, req.params.id);
+      if (existing && clearsReviewReason) {
+        patchData.metadata = { ...((existing as any).metadata ?? {}), review_reason: null };
+      }
       const tx = mockStore.updateTransaction(userId, req.params.id, patchData);
       if (!tx) return reply.status(404).send({ error: "transaction not found" });
       // Al corregir categoría, una clasificación cacheada mala queda congelada:
@@ -173,7 +182,18 @@ export async function transactionRoutes(app: FastifyInstance) {
           mockStore.upsertRule(userId, { merchant_normalized: norm, preferred_category_id: parsed.data.category_id });
         }
       }
-      return { ...tx, mocked: true };
+      return { ...tx, review_reason: (tx as any)?.metadata?.review_reason ?? null, mocked: true };
+    }
+    if (clearsReviewReason) {
+      const { data: currentRows, error: currentError } = await supabase
+        .from("transactions")
+        .select("metadata")
+        .eq("id", req.params.id)
+        .eq("user_id", userId)
+        .limit(1);
+      if (currentError) return reply.status(503).send({ error: currentError.message, code: "db_unavailable" });
+      const current = ((currentRows ?? []) as any[])[0];
+      if (current) patchData.metadata = { ...(current.metadata ?? {}), review_reason: null };
     }
     const { data, error } = await supabase.from("transactions").update({ ...patchData, updated_at: new Date().toISOString() }).eq("id", req.params.id).eq("user_id", userId).select().single();
     if (error) return reply.status(400).send({ error: error.message });
@@ -185,7 +205,7 @@ export async function transactionRoutes(app: FastifyInstance) {
       const norm = normalizeMerchant(data.merchant);
       await supabase.from("rules").upsert({ user_id: userId, merchant_normalized: norm, preferred_category_id: parsed.data.category_id }, { onConflict: "user_id,merchant_normalized" });
     }
-    return data;
+    return { ...(data as any), review_reason: (data as any)?.metadata?.review_reason ?? null };
   });
 
   app.delete("/v1/transactions/:id", async (req: any, reply) => {
