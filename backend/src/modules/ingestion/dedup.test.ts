@@ -220,4 +220,17 @@ describe("Dedup — al unir filas gana la mejor clasificación (caso Frida Kahlo
     const cand = { category_id: "cat-compras", source: "ai", confidence: 0.7, merchant: "Frida Kahlo" };
     expect(betterClassificationPatch(cand, parserSurvivor)).toMatchObject({ category_id: "cat-compras", source: "ai" });
   });
+
+  it("superviviente 'manual' no se pisa aunque la IA llegue con 1.0", () => {
+    const manualSurvivor = { ...survivor, source: "manual", confidence: 1 };
+    const cand = { category_id: "cat-compras", source: "ai", confidence: 1, merchant: "Frida Kahlo" };
+    expect(isBetterClassification(cand, manualSurvivor)).toBe(false);
+    expect(betterClassificationPatch(cand, manualSurvivor)).toBeNull();
+  });
+
+  it("'manual' también gana a 'rule'", () => {
+    const manualSurvivor = { ...survivor, source: "manual", confidence: 1 };
+    const cand = { category_id: "cat-compras", source: "rule", confidence: 1, merchant: "Frida Kahlo" };
+    expect(betterClassificationPatch(cand, manualSurvivor)).toBeNull();
+  });
 });

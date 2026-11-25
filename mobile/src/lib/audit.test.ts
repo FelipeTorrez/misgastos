@@ -45,6 +45,16 @@ describe("classificationAudit", () => {
     expect(a.fallback).toBe(1);
     expect(a.requierenRevision).toBe(1);
   });
+
+  it("manual no cuenta como sinClasificar ni como requieren revisión", () => {
+    const a = classificationAudit([
+      { source: "manual", confidence: 1 },
+      { source: "ai_error", confidence: null },
+    ]);
+    expect(a.total).toBe(2);
+    expect(a.sinClasificar).toBe(1);
+    expect(a.requierenRevision).toBe(1);
+  });
 });
 
 describe("reviewQueue", () => {
