@@ -44,10 +44,16 @@ describe("GET /v1/transactions/:id en mock — correo original", () => {
     expect(j.raw_event.subject).toBe("Compra realizada");
   });
 
-  it("id inexistente → 404", async () => {
+  it("id inexistente pero uuid válido → 404", async () => {
     const app = await buildApp();
-    const res = await app.inject({ method: "GET", url: "/v1/transactions/no-existe" });
+    const res = await app.inject({ method: "GET", url: "/v1/transactions/99999999-9999-4999-8999-999999999999" });
     expect(res.statusCode).toBe(404);
     expect(res.json()).toMatchObject({ error: "transaction not found" });
+  });
+
+  it("id malformado → 400", async () => {
+    const app = await buildApp();
+    const res = await app.inject({ method: "GET", url: "/v1/transactions/no-existe" });
+    expect(res.statusCode).toBe(400);
   });
 });

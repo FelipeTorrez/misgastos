@@ -7,6 +7,8 @@ const { mockRules, nextId } = vi.hoisted(() => {
 });
 
 vi.mock("../../lib/supabase.js", () => {
+  // ids de regla con forma de uuid: las rutas PATCH/DELETE validan :id.
+  const mkId = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
   const query = (_table: string) => {
     return {
       select: () => ({
@@ -27,7 +29,7 @@ vi.mock("../../lib/supabase.js", () => {
         then: (cb: any) => cb({ data: [...mockRules], error: null })
       }),
       insert: (row: any) => {
-        const r = { id: `rule-${nextId.v++}`, hits_count: 0, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...row };
+        const r = { id: mkId(nextId.v++), hits_count: 0, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...row };
         mockRules.push(r);
         return { select: () => ({ single: async () => ({ data: r, error: null }) }) };
       },
@@ -37,7 +39,7 @@ vi.mock("../../lib/supabase.js", () => {
           Object.assign(mockRules[idx], row);
           return { select: () => ({ single: async () => ({ data: mockRules[idx], error: null }) }) };
         }
-        const r = { id: `rule-${nextId.v++}`, hits_count: 0, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...row };
+        const r = { id: mkId(nextId.v++), hits_count: 0, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...row };
         mockRules.push(r);
         return { select: () => ({ single: async () => ({ data: r, error: null }) }) };
       },
@@ -120,6 +122,13 @@ describe("Phase 8 — Rules CRUD API", () => {
 
     const list = await app.inject({ method: "GET", url: "/v1/rules" });
     expect(list.json().length).toBe(0);
+  });
+
+  it("PATCH/DELETE /v1/rules/:id con id malformado → 400", async () => {
+    const patch = await app.inject({ method: "PATCH", url: "/v1/rules/abc123", payload: { preferred_category_id: CAT_B } });
+    expect(patch.statusCode).toBe(400);
+    const del = await app.inject({ method: "DELETE", url: "/v1/rules/abc123" });
+    expect(del.statusCode).toBe(400);
   });
 
   it("POST /v1/rules upsert si merchant ya existe", async () => {

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { supabase, getUserId, isMockMode } from "../../lib/supabase.js";
 import { mockStore } from "../../lib/mockStore.js";
 import { monthBounds, monthOverlaps, rangeDays, currentMonthLocal, shiftMonths } from "../../lib/dateRange.js";
-import { BudgetsQuery } from "../../lib/queryDates.js";
+import { BudgetsQuery, UuidParam } from "../../lib/queryDates.js";
 import { planCarryOver } from "./carry.js";
 
 const CreateBudget = z.object({
@@ -286,12 +286,15 @@ export async function budgetRoutes(app: FastifyInstance) {
   });
 
   app.delete("/v1/budgets/:id", async (req: any, reply) => {
+    const parsedId = UuidParam.safeParse(req.params.id);
+    if (!parsedId.success) return reply.status(400).send(parsedId.error.flatten());
+    const id = parsedId.data;
     const userId = getUserId(req);
     if (isMockMode) {
-      mockStore.deleteBudget(userId, req.params.id);
+      mockStore.deleteBudget(userId, id);
       return { ok: true };
     }
-    const { error } = await supabase.from("budgets").delete().eq("id", req.params.id).eq("user_id", userId);
+    const { error } = await supabase.from("budgets").delete().eq("id", id).eq("user_id", userId);
     if (error) return reply.status(400).send({ error: error.message });
     return { ok: true };
   });

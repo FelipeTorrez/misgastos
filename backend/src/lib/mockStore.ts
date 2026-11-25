@@ -120,7 +120,7 @@ export const mockStore = {
       this._persist();
       return this.budgets[idx];
     }
-    const b = { id: `budget-${uuid()}`, user_id: userId, created_at: new Date().toISOString(), ...data };
+    const b = { id: uuid(), user_id: userId, created_at: new Date().toISOString(), ...data };
     this.budgets.push(b);
     this._persist();
     return b;
@@ -146,7 +146,7 @@ export const mockStore = {
       this._persist();
       return this.rules[idx];
     }
-    const rule = { id: `rule-${uuid()}`, user_id: userId, hits_count: 0, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...data };
+    const rule = { id: uuid(), user_id: userId, hits_count: 0, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...data };
     this.rules.push(rule);
     this._persist();
     return rule;
@@ -242,7 +242,7 @@ export const mockStore = {
     return list.sort((a: any, b: any) => (b.date ?? "").localeCompare(a.date ?? "")).slice(0, filters?.limit ?? 100);
   },
   insertTransaction(userId: string, data: any) {
-    const tx = { id: `mock-tx-${uuid()}`, user_id: userId, created_at: new Date().toISOString(), ...data };
+    const tx = { id: uuid(), user_id: userId, created_at: new Date().toISOString(), ...data };
     this.transactions.push(tx);
     this._persist();
     return tx;

@@ -385,17 +385,25 @@ describe("GET /v1/budgets from/to — merge ciclo + mensuales", () => {
   });
 
   it("(g) DELETE /v1/budgets/:id borra un budget de ciclo", async () => {
+    const budgetId = "66666666-6666-4666-8666-666666666666";
     db.budgets = [
-      { id: "b1", user_id: "u1", category_id: "cat-A", amount: 70000, month: "2026-10-20", period: "cycle" },
+      { id: budgetId, user_id: "u1", category_id: "cat-A", amount: 70000, month: "2026-10-20", period: "cycle" },
     ];
     const app = Fastify();
     await app.register(budgetRoutes);
     const before = await app.inject({ method: "GET", url: "/v1/budgets?from=2026-10-20&to=2026-11-19" });
     expect(before.json()).toHaveLength(1);
-    const del = await app.inject({ method: "DELETE", url: "/v1/budgets/b1" });
+    const del = await app.inject({ method: "DELETE", url: `/v1/budgets/${budgetId}` });
     expect(del.statusCode).toBe(200);
     expect(del.json()).toEqual({ ok: true });
     const after = await app.inject({ method: "GET", url: "/v1/budgets?from=2026-10-20&to=2026-11-19" });
     expect(after.json()).toHaveLength(0);
+  });
+
+  it("(h) DELETE /v1/budgets/:id con id malformado → 400 (no 503)", async () => {
+    const app = Fastify();
+    await app.register(budgetRoutes);
+    const res = await app.inject({ method: "DELETE", url: "/v1/budgets/abc123" });
+    expect(res.statusCode).toBe(400);
   });
 });

@@ -5,7 +5,8 @@ import { mockStore } from "../../lib/mockStore.js";
 import { normalizeMerchant, findBestRuleMatch } from "../../lib/merchantNorm.js";
 import { del as classifyCacheDel } from "../../lib/classifyCache.js";
 import { monthBounds } from "../../lib/dateRange.js";
-import { TransactionsQuery, DateTimeQuery } from "../../lib/queryDates.js";
+import { TransactionsQuery, DateTimeQuery, UuidParam } from "../../lib/queryDates.js";
+import { replyDbError } from "../../lib/http.js";
 
 export const CreateTx = z.object({
   account_id: z.string().uuid().nullable().optional(),
@@ -75,7 +76,7 @@ export async function transactionRoutes(app: FastifyInstance) {
     if (category_id) q = q.eq("category_id", category_id);
     if (account_id) q = q.eq("account_id", account_id);
     const { data, error } = await q;
-    if (error) return reply.status(503).send({ error: error.message, code: "db_unavailable" });
+    if (error) return replyDbError(reply, error);
     const rows = withReviewReason(data ?? []);
     reply.header("x-transactions-limit", String(limit));
     if (rows.length >= limit) reply.header("x-transactions-truncated", "1");
@@ -115,8 +116,10 @@ export async function transactionRoutes(app: FastifyInstance) {
   });
 
   app.get("/v1/transactions/:id", async (req: any, reply: any) => {
+    const parsedId = UuidParam.safeParse(req.params.id);
+    if (!parsedId.success) return reply.status(400).send(parsedId.error.flatten());
     const userId = getUserId(req);
-    const id = req.params.id as string;
+    const id = parsedId.data;
     if (isMockMode) {
       const tx = mockStore.getTransaction(userId, id);
       if (!tx) return reply.status(404).send({ error: "transaction not found" });
@@ -128,19 +131,22 @@ export async function transactionRoutes(app: FastifyInstance) {
       return { ...tx, review_reason: tx?.metadata?.review_reason ?? null, raw_event };
     }
     const { data: txData, error: txError } = await supabase.from("transactions").select("*").eq("id", id).eq("user_id", userId).limit(1);
-    if (txError) return reply.status(503).send({ error: txError.message, code: "db_unavailable" });
+    if (txError) return replyDbError(reply, txError);
     const tx = ((txData ?? []) as any[])[0] ?? null;
     if (!tx) return reply.status(404).send({ error: "transaction not found" });
     let raw_event: any = null;
     if (tx.raw_event_id) {
       const { data: reData, error: reError } = await supabase.from("raw_events").select("id, source, sender, subject, received_at, raw_content").eq("id", tx.raw_event_id).eq("user_id", userId).limit(1);
-      if (reError) return reply.status(503).send({ error: reError.message, code: "db_unavailable" });
+      if (reError) return replyDbError(reply, reError);
       raw_event = ((reData ?? []) as any[])[0] ?? null;
     }
     return { ...tx, review_reason: tx?.metadata?.review_reason ?? null, raw_event };
   });
 
   app.patch("/v1/transactions/:id", async (req: any, reply) => {
+    const parsedId = UuidParam.safeParse(req.params.id);
+    if (!parsedId.success) return reply.status(400).send(parsedId.error.flatten());
+    const id = parsedId.data;
     const userId = getUserId(req);
     const body = { ...((req.body ?? {}) as any) };
     const updateRule = body.update_rule !== false;
@@ -160,11 +166,11 @@ export async function transactionRoutes(app: FastifyInstance) {
     // conservar dedup_key/merged_from.
     const clearsReviewReason = !!parsed.data.category_id || patchData.status === "corrected";
     if (isMockMode) {
-      const existing = mockStore.getTransaction(userId, req.params.id);
+      const existing = mockStore.getTransaction(userId, id);
       if (existing && clearsReviewReason) {
         patchData.metadata = { ...((existing as any).metadata ?? {}), review_reason: null };
       }
-      const tx = mockStore.updateTransaction(userId, req.params.id, patchData);
+      const tx = mockStore.updateTransaction(userId, id, patchData);
       if (!tx) return reply.status(404).send({ error: "transaction not found" });
       // Al corregir categoría, una clasificación cacheada mala queda congelada:
       // invalidar para que la próxima ingesta de este comercio reclasifique.
@@ -188,14 +194,14 @@ export async function transactionRoutes(app: FastifyInstance) {
       const { data: currentRows, error: currentError } = await supabase
         .from("transactions")
         .select("metadata")
-        .eq("id", req.params.id)
+        .eq("id", id)
         .eq("user_id", userId)
         .limit(1);
-      if (currentError) return reply.status(503).send({ error: currentError.message, code: "db_unavailable" });
+      if (currentError) return replyDbError(reply, currentError);
       const current = ((currentRows ?? []) as any[])[0];
       if (current) patchData.metadata = { ...(current.metadata ?? {}), review_reason: null };
     }
-    const { data, error } = await supabase.from("transactions").update({ ...patchData, updated_at: new Date().toISOString() }).eq("id", req.params.id).eq("user_id", userId).select().single();
+    const { data, error } = await supabase.from("transactions").update({ ...patchData, updated_at: new Date().toISOString() }).eq("id", id).eq("user_id", userId).select().single();
     if (error) return reply.status(400).send({ error: error.message });
     // Al corregir categoría, invalidar el cache de este comercio (ver rama mock).
     if (parsed.data.category_id && (data as any)?.merchant) {
@@ -209,9 +215,12 @@ export async function transactionRoutes(app: FastifyInstance) {
   });
 
   app.delete("/v1/transactions/:id", async (req: any, reply) => {
+    const parsedId = UuidParam.safeParse(req.params.id);
+    if (!parsedId.success) return reply.status(400).send(parsedId.error.flatten());
+    const id = parsedId.data;
     const userId = getUserId(req);
-    if (isMockMode) { mockStore.deleteTransaction(userId, req.params.id); return { ok: true }; }
-    const { error } = await supabase.from("transactions").delete().eq("id", req.params.id).eq("user_id", userId);
+    if (isMockMode) { mockStore.deleteTransaction(userId, id); return { ok: true }; }
+    const { error } = await supabase.from("transactions").delete().eq("id", id).eq("user_id", userId);
     if (error) return reply.status(400).send({ error: error.message });
     return { ok: true };
   });
