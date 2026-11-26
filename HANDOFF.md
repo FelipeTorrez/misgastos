@@ -1,6 +1,8 @@
 # HANDOFF — Contexto completo para continuar desarrollo
 
-> Última actualización: 2026-11-25 (noche) — **Pendientes: los headers `x-pending-*` resumen la cola completa, no la página** ✅ — backend `386/386` (43 files) · `tsc --noEmit` 0 · mobile sin cambios · **en el árbol de trabajo, sin commit ni push**. Ver §4 (-33).
+> Última actualización: 2026-11-26 — **Pendientes: el filtro de vinculados ya no cuenta 237 eventos que sí tienen transacción** ✅ — backend `391/391` (43 files) · `tsc --noEmit` 0 · mobile sin cambios · **en el árbol de trabajo, sin commit ni push** (no se verificó prod: prohibido salir a la red/base en esta tarea). Ver §4 (-34).
+>
+> Anterior (2026-11-25 noche) — **Pendientes: los headers `x-pending-*` resumen la cola completa, no la página** ✅ — backend `386/386` (43 files) · `tsc --noEmit` 0 · mobile sin cambios · **en el árbol de trabajo, sin commit ni push**. Ver §4 (-33).
 >
 > Anterior (2026-11-25) — **Gasto manual = `manual` (no "IA 100%") y corregir cierra la revisión (MG-093/094)** ✅ — backend `374/374` (42 files) · mobile `111/111` (13 files) · `tsc --noEmit` 0 en ambos · **mergeado en `main` local, sin push** (`origin/main` 7 commits atrás: Railway y el APK siguen con la versión anterior). Ver §4 (-32).
 >
@@ -29,7 +31,7 @@
 | Backend | Node.js + Fastify + tsx (watch) + Node 22 en Railway (prod), Zod para validación |
 | DB | Supabase (Postgres + RLS) — **conectada en cloud (proyecto bqnktrfwoxetbirrodmo), modo real activo** |
 | AI | Groq API (`qwen/qwen3.8-27b` actual, antes `llama-3.1-70b`) con fallback mock — **Groq real activo** |
-| Tests | Vitest — **386/386 passing** (43 files) · mobile `101/101` (12 files) · `mobile: tsc --noEmit` **0 errores** · `tests/ingestion.guard.test.ts` + `tests/agent-financiero.test.ts` + `src/modules/{settings,ranges}` |
+| Tests | Vitest — **391/391 passing** (43 files) · mobile `101/101` (12 files) · `mobile: tsc --noEmit` **0 errores** · `tests/ingestion.guard.test.ts` + `tests/agent-financiero.test.ts` + `src/modules/{settings,ranges}` |
 
 ### Estado de fases
 - ✅ Phase 0: Spec + ADRs 001–007 (`spec/`, `docs/decisions/`)
@@ -175,6 +177,12 @@ Durante la sesión del 25/08 hubo **OTRA IA/sesión editando este mismo repo sim
 ---
 
 ## 4. Cambios de la última sesión (lo más reciente primero)
+
+-34. **Pendientes: el filtro de vinculados fallaba en silencio y contaba 237 eventos ya convertidos** — 2026-11-26:
+    - **El defecto (medido en prod el 26-nov, tras desplegar MG-092).** El header decía **645** pendientes cuando la misma definición en SQL daba **408**; de las 500 filas que la API devolvía como pendientes, **237 ya tenían una transacción** apuntando a su `raw_event_id` ("Recibiste una devolución de $3.331 a tu CMR", "Compraste $16.980 en MERPAGO PAPAJOHNS"…). Causa: `linkedRawEventIds()` mandaba `.in("raw_event_id", ids)` con los 500 UUIDs de **una página**, generando una URL de ~18 KB que PostgREST rechaza. El error de Supabase vuelve en `res.error` (no se lanza), el código solo miraba `res.data` y el `try/catch` devolvía un `Set` vacío → filtro desactivado y todo contado como pendiente.
+    - **El fix.** Nuevo `loadLinkedIds(userId)` que pagina `transactions.raw_event_id` con `.eq(user_id).not(raw_event_id is null).range()` en páginas de 500 (tope 10.000), se llama **una vez** en `listAllPendingReal` antes del `while` y se reusa; menos queries y sin URL gigante. `linkedRawEventIds(userId, ids)` queda como compatibilidad troceando en lotes de 100. **Ambas LANZAN** con `linkedRawEventIds: <message>` si `error` no es null; `listAllPendingReal` también valida el `error` del listado de `raw_events`. El endpoint `?pending=1` atrapa el fallo y responde **503**, nunca 200 con la cola inflada.
+    - **Verificación.** `backend/tests/ingestion.pending.test.ts` ahora tiene 6 casos (3 previos + 3 nuevos): 10 pendientes con 4 transacciones vinculadas → `x-pending-count 6` y las 4 fuera del body; mock que devuelve `{data:null,error}` → **503** sin `x-pending-count`; `linkedRawEventIds` con 250 ids → lotes `[100,100,50]` y 125 vinculados sin perder ninguno. Gate: backend **391/391** (43 files), `tsc --noEmit` 0.
+    - **Pendiente humano:** desplegar y comparar `x-pending-count` contra `select count(*) from raw_events re where not exists (select 1 from transactions t where t.raw_event_id = re.id) and coalesce(metadata->'guard'->>'is_transaction','') <> 'false'` (medido: 645 vs 408). No se ejecutó nada contra la base ni prod desde esta sesión.
 
 -33. **Pendientes con la cola completa (MG-092) y un id malformado que ya no finge caída (MG-090)** — 2026-11-25:
     - **El defecto (medición de la tarea en prod).** Con el mismo endpoint y solo cambiando `limit`: `?pending=1` → `x-pending-count: 50`, `x-pending-total: 1.402.502`; `limit=100` → `100`, `1.660.326`; `limit=500` → `483`, `146.418.428`. `enrichPending()` solo veía las filas de la página (`ingestion/routes.ts` armaba los headers con `enriched.summary`), así que MG-083 habría mostrado "50 correos, $1.402.502" cuando la cola real son 483 y $6,3M de movimientos reales. Encima, el nombre `x-pending-total` invitaba a usar la suma con promos.
