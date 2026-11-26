@@ -6,7 +6,7 @@ import { isDescartado, splitDescartados } from "../lib/visibleTxs";
 import { API_URL } from "../lib/supabase";
 import { Category } from "../lib/categories";
 import { C, R, T } from "../theme/tokens";
-import { needsAudit, provenanceLabel } from "../lib/classification";
+import { needsAudit, provenanceLabel, ruleProvenance } from "../lib/classification";
 import { reviewQueue } from "../lib/audit";
 import { reviewReasonLabel } from "../lib/reviewReason";
 import { MIcon } from "../components/ui/MIcon";
@@ -155,6 +155,7 @@ export function Movimientos({ txs, truncated, limit, cats, month: _month, filter
   const pendingCount = base.filter(tx => tx.status === "pending_review" || tx.status === "pending_ai").length;
   const isPending = (tx: any) => tx.status === "pending_review" || tx.status === "pending_ai";  const reviewReason = (tx: any): string | null => tx.review_reason ?? tx.metadata?.review_reason ?? null;
   const reviewLabel = (r: string | null) => reviewReasonLabel(r);
+  const ruleMerchant = ruleProvenance(editingTx);
 
   return (
     <View style={{ flex: 1 }}>
@@ -288,6 +289,10 @@ export function Movimientos({ txs, truncated, limit, cats, month: _month, filter
               </View>
             </View>
 
+            {ruleMerchant && (
+              <Text style={s.ruleProvenance}>Clasificado por tu regla: {toTitleCase(ruleMerchant)}</Text>
+            )}
+
             <Text style={s.hint}>Elige una categoría</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.catScroll}>
               {cats.map(c => (
@@ -394,6 +399,7 @@ const s = StyleSheet.create({
   summaryBadges: { alignItems: "flex-end", gap: 6 },
   summaryMerchant: { color: C.text, fontWeight: "700", fontSize: 15 },
   summaryMeta: { color: C.dim, fontSize: 12, marginTop: 2 },
+  ruleProvenance: { color: C.primary, fontSize: 12, fontWeight: "600", marginTop: 8 },
   hint: { color: C.faint, fontSize: 11, marginTop: 8, marginBottom: 6 },
   catScroll: { gap: 10, paddingVertical: 4, paddingRight: 16, paddingBottom: 4 },
   catChip: { alignItems: "center", gap: 6, padding: 10, borderRadius: R.md, backgroundColor: C.surfaceAlt, borderWidth: 1, borderColor: C.border, width: 92, marginRight: 8 },

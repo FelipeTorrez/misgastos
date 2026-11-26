@@ -92,6 +92,30 @@ describe("Ingesta — estados honestos (confirmed / pending_review / pending_ai)
     expect(classifyMock).not.toHaveBeenCalled();
   });
 
+  it("guarda qué regla clasificó el gasto en transaction.metadata.matched_rule", async () => {
+    store.rules = [{
+      id: "rule-jumbo", user_id: "user-test", merchant_normalized: "jumbo",
+      preferred_category_id: CAT_ALIM, preferred_merchant_alias: null, hits_count: 0,
+    }];
+    const r = await ingest(
+      "Compra por $8.500 en Jumbo con tarjeta terminada en 1234 - 22/11/2026 15:30 - Santander",
+      "st-rule-audit",
+    );
+    expect(r.body.classification_source).toBe("rule");
+    expect(r.body.transaction.metadata.matched_rule).toEqual({ id: "rule-jumbo", merchant_normalized: "jumbo" });
+    // La respuesta pública no cambia: matched_rule sigue top-level con su forma.
+    expect(r.body.matched_rule).toEqual({ id: "rule-jumbo", category: CAT_ALIM, hits: 0 });
+  });
+
+  it("sin regla no inventa metadata.matched_rule", async () => {
+    classifyMock.mockResolvedValue(aiClassification({ merchant: "Frida Kahlo", confidence: 0.95 }));
+    const r = await ingest(
+      "Compra por $12.000 en Frida Kahlo con tarjeta terminada en 1234 - 22/11/2026 15:30 - Santander",
+      "st-ai-no-rule",
+    );
+    expect(r.body.transaction.metadata?.matched_rule).toBeUndefined();
+  });
+
   it("IA con confianza alta (0.95) => confirmed", async () => {
     classifyMock.mockResolvedValue(aiClassification({ merchant: "Frida Kahlo", confidence: 0.95 }));
     const r = await ingest(

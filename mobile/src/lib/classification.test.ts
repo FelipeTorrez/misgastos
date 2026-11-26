@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { confidenceBand, needsAudit, provenanceLabel } from "./classification";
+import { confidenceBand, needsAudit, provenanceLabel, ruleProvenance } from "./classification";
 
 describe("provenanceLabel", () => {
   it("ai 0.95 → 'IA 95%'", () => {
@@ -50,5 +50,21 @@ describe("confidenceBand", () => {
     expect(confidenceBand(0.7)).toBe("media");
     expect(confidenceBand(0.4)).toBe("baja");
     expect(confidenceBand(null)).toBe(null);
+  });
+});
+
+describe("ruleProvenance", () => {
+  it("devuelve el comercio de la regla que clasificó el gasto", () => {
+    expect(ruleProvenance({
+      source: "rule",
+      metadata: { matched_rule: { id: "rule-jumbo", merchant_normalized: "jumbo" } },
+    })).toBe("jumbo");
+  });
+
+  it("null sin metadata, sin matched_rule o con comercio vacío", () => {
+    expect(ruleProvenance({ source: "ai", confidence: 0.95 })).toBe(null);
+    expect(ruleProvenance({ metadata: null })).toBe(null);
+    expect(ruleProvenance({ metadata: { matched_rule: null } })).toBe(null);
+    expect(ruleProvenance({ metadata: { matched_rule: { merchant_normalized: "  " } } })).toBe(null);
   });
 });
