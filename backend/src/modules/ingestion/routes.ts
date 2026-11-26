@@ -463,16 +463,54 @@ async function ingestFromRaw(userId: string, rawEvent: any) {
   };
 }
 
-/** raw_event_ids ya vinculados a una transacción (para el filtro pending). */
-async function linkedRawEventIds(userId: string, ids: string[]): Promise<Set<string>> {
-  if (!ids.length) return new Set();
-  try {
-    const builder: any = supabase.from("transactions").select("raw_event_id").eq("user_id", userId);
-    const res = typeof builder.in === "function" ? await builder.in("raw_event_id", ids) : await builder.limit(500);
-    return new Set(((res?.data ?? []) as any[]).map(t => t.raw_event_id).filter(Boolean));
-  } catch {
-    return new Set();
+const LINKED_PAGE = 500;
+const LINKED_MAX = 10000;
+const LINKED_IN_CHUNK = 100;
+
+/**
+ * raw_event_ids ya vinculados a una transacción, cargados UNA vez por request.
+ * Se pagina con .range() en vez de mandar `.in(...)` con cientos de UUIDs:
+ * 500 ids generan una URL de ~18 KB que PostgREST rechaza y el error llegaba
+ * en `res.error`, silenciando el filtro (645 pendientes vs 408 reales).
+ * Un fallo de lectura LANZA: nunca se devuelve un Set vacío que infle el conteo.
+ */
+export async function loadLinkedIds(userId: string): Promise<Set<string>> {
+  const linked = new Set<string>();
+  let offset = 0;
+  while (offset < LINKED_MAX) {
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("raw_event_id")
+      .eq("user_id", userId)
+      .not("raw_event_id", "is", null)
+      .range(offset, offset + LINKED_PAGE - 1);
+    if (error) throw new Error(`linkedRawEventIds: ${error.message}`);
+    const rows = (data ?? []) as any[];
+    for (const row of rows) if (row?.raw_event_id) linked.add(row.raw_event_id);
+    if (rows.length < LINKED_PAGE) break;
+    offset += LINKED_PAGE;
   }
+  return linked;
+}
+
+/**
+ * Compat: mismos datos para una lista acotada de ids. Trocea en lotes de 100
+ * para no repetir la URL gigante y revisa `error` en cada lote.
+ */
+export async function linkedRawEventIds(userId: string, ids: string[]): Promise<Set<string>> {
+  const linked = new Set<string>();
+  for (let i = 0; i < ids.length; i += LINKED_IN_CHUNK) {
+    const chunk = ids.slice(i, i + LINKED_IN_CHUNK).filter(Boolean);
+    if (!chunk.length) continue;
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("raw_event_id")
+      .eq("user_id", userId)
+      .in("raw_event_id", chunk);
+    if (error) throw new Error(`linkedRawEventIds: ${error.message}`);
+    for (const row of (data ?? []) as any[]) if (row?.raw_event_id) linked.add(row.raw_event_id);
+  }
+  return linked;
 }
 
 /**
@@ -496,18 +534,19 @@ function listAllPendingMock(userId: string): any[] {
 
 async function listAllPendingReal(userId: string): Promise<any[]> {
   const pending: any[] = [];
+  const linked = await loadLinkedIds(userId);
   let offset = 0;
   while (pending.length < PENDING_FETCH_MAX) {
     const builder: any = supabase.from("raw_events").select("*").eq("user_id", userId).order("received_at", { ascending: false });
     const canRange = typeof builder.range === "function";
-    const { data } = canRange
+    const { data, error } = canRange
       ? await builder.range(offset, offset + PENDING_FETCH_PAGE - 1)
       : await builder.limit(offset + PENDING_FETCH_PAGE);
+    if (error) throw new Error(`raw_events pending: ${error.message}`);
     const fetched = ((data ?? []) as any[]);
     // Sin .range() (mock de tests): el builder limita a offset+page y aquí se corta la página.
     const rows = canRange ? fetched : fetched.slice(offset, offset + PENDING_FETCH_PAGE);
     if (!rows.length) break;
-    const linked = await linkedRawEventIds(userId, rows.map(r => r.id));
     for (const row of rows) {
       if (pending.length >= PENDING_FETCH_MAX) break;
       if (row?.metadata?.guard?.is_transaction !== false && !linked.has(row.id)) pending.push(row);
@@ -559,7 +598,15 @@ export async function ingestionRoutes(app: FastifyInstance) {
       // El summary se calcula sobre TODA la cola pendiente (metadata.guard es
       // JSONB, así que el filtro se resuelve en memoria). El body lleva solo la
       // página pedida; x-pending-returned deja claro cuántas filas trae.
-      const allPending = isMockMode ? listAllPendingMock(userId) : await listAllPendingReal(userId);
+      // Un fallo de lectura (p.ej. PostgREST rechaza la query) rompe con 503:
+      // devolver 200 con la cola sin filtrar publica un número que miente.
+      let allPending: any[];
+      try {
+        allPending = isMockMode ? listAllPendingMock(userId) : await listAllPendingReal(userId);
+      } catch (e: any) {
+        req.log.error({ err: e }, "pending list failed");
+        return reply.status(503).send({ error: e?.message ?? "pending lookup failed" });
+      }
       const enriched = enrichPending(allPending);
       const page = enriched.rows.slice(offset, offset + limit);
       reply.header("x-pending-count", String(enriched.summary.count));
