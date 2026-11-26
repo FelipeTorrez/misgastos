@@ -3,6 +3,9 @@ export type ConfidenceBand = "alta" | "media" | "baja";
 export interface ClassifiedTx {
   source?: string | null;
   confidence?: number | null;
+  metadata?: {
+    matched_rule?: { id?: string | null; merchant_normalized?: string | null } | null;
+  } | null;
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -47,4 +50,13 @@ export function provenanceLabel(tx: ClassifiedTx): string {
 export function needsAudit(tx: ClassifiedTx): boolean {
   const s = tx?.source;
   return s !== "ai" && s !== "rule" && s !== "ai_cache" && s !== "manual";
+}
+
+/**
+ * Comercio normalizado de la regla que clasificó el gasto (metadata.matched_rule),
+ * o null si lo clasificó otra vía / es un gasto previo a esta auditoría.
+ */
+export function ruleProvenance(tx: ClassifiedTx): string | null {
+  const merchant = tx?.metadata?.matched_rule?.merchant_normalized;
+  return typeof merchant === "string" && merchant.trim() ? merchant : null;
 }

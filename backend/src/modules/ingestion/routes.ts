@@ -32,7 +32,7 @@ async function findRule(userId: string, merchantRaw: string) {
     return mockStore.findRule(userId, merchantNormalized)
       ?? findBestRuleMatch(merchantNormalized, mockStore.listRules(userId));
   }
-  const { data, error } = await supabase.from("rules").select("id, preferred_category_id, preferred_merchant_alias, hits_count").eq("user_id", userId).eq("merchant_normalized", merchantNormalized).limit(1);
+  const { data, error } = await supabase.from("rules").select("id, preferred_category_id, preferred_merchant_alias, hits_count, merchant_normalized").eq("user_id", userId).eq("merchant_normalized", merchantNormalized).limit(1);
   if (error) throw new Error(`findRule: ${error.message}`);
   const exact = ((data ?? []) as any[])[0] ?? null;
   if (exact) return exact;
@@ -349,6 +349,15 @@ async function ingestFromRaw(userId: string, rawEvent: any) {
     if (processorHit) {
       if (metadata.review_reason) metadata.ai_fallback = fallbackReason;
       metadata.review_reason = "payment_processor";
+    }
+    // Auditoría de clasificación: deja rastro de la regla que decidió la
+    // categoría (ej. "jumbo → Supermercado") para que el detalle del gasto
+    // pueda explicar el porqué. No altera la respuesta pública matched_rule.
+    if (matchedRule) {
+      metadata.matched_rule = {
+        id: matchedRule.id,
+        merchant_normalized: matchedRule.merchant_normalized ?? null,
+      };
     }
     // Huella atómica (migración 008). Sólo la fila que aspira a ser el original
     // lleva dedup_key; las 'duplicate' se guardan con null para no competir por
